@@ -16,6 +16,8 @@ Bash、tmux、Vim、Neovim の個人設定を管理するリポジトリです�
 | `_vimrc` | `~/.vimrc` | Vim |
 | `_vimrc_min` | `~/.vimrc` | 最小構成のVim設定（任意） |
 | `nvim/` | `~/.config/nvim/` | Neovim |
+| `.githooks/pre-push` | Git の pre-push hook | 公開前の漏えいチェック |
+| `scripts/check-public-repo.py` | リポジトリ内 | 個人情報・秘密情報の差分検査 |
 
 ## インストール
 
