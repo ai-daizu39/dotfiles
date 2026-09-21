@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+scanner="$repo_root/scripts/check-public-repo.py"
+checked=0
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  if [ "$local_sha" = "0000000000000000000000000000000000000000" ]; then
+    continue
+  fi
+
+  printf 'Checking outgoing commits for %s -> %s...\n' "$local_ref" "$remote_ref"
+  python3 "$scanner" --local-sha "$local_sha" --remote-sha "$remote_sha"
+  checked=1
+done
+
+if [ "$checked" -eq 0 ]; then
+  printf 'No commits need public-repository inspection.\n'
+fi
+
+if command -v gitleaks >/dev/null 2>&1 && gitleaks git --help >/dev/null 2>&1; then
+  printf 'Running Gitleaks against repository history...\n'
+  gitleaks git --redact --no-banner "$repo_root"
+else
+  printf 'Gitleaks is not installed; custom pre-push checks completed.\n' >&2
+fi
