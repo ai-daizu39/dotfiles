@@ -29,15 +29,34 @@ jobs:
       - name: Validate installer
         run: |
           test_home="$(mktemp -d)"
+          printf 'original-vimrc\n' > "$test_home/.vimrc"
+
           HOME="$test_home" \
             XDG_CONFIG_HOME="$test_home/.config" \
             XDG_DATA_HOME="$test_home/.local/share" \
             bash install.sh
+
           test -L "$test_home/.bashrc"
+          test -L "$test_home/.vimrc"
           test -L "$test_home/.config/nvim"
           test -d "$test_home/.vim/pack/minpac/opt/minpac/.git"
           test -d "$test_home/.local/share/nvim/site/pack/minpac/opt/minpac/.git"
           test ! -e "$PWD/nvim/pack"
+
+          first_backup="$(
+            find "$test_home/.dotfiles-backup" -mindepth 1 -maxdepth 1 -type d -print -quit
+          )"
+          test -n "$first_backup"
+          test "$(cat "$first_backup/.vimrc")" = "original-vimrc"
+
+          HOME="$test_home" \
+            XDG_CONFIG_HOME="$test_home/.config" \
+            XDG_DATA_HOME="$test_home/.local/share" \
+            bash install.sh --minimal-vim --skip-minpac
+
+          test "$(readlink "$test_home/.vimrc")" = "$PWD/_vimrc_min"
+          test "$(cat "$first_backup/.vimrc")" = "original-vimrc"
+          test "$(find "$test_home/.dotfiles-backup" -mindepth 1 -maxdepth 1 -type d | wc -l)" -eq 2
 
       - name: Validate tmux
         run: |
