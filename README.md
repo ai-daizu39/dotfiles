@@ -38,7 +38,7 @@ bash install.sh --minimal-vim
 `install.sh` は Git が利用できる場合、minpac も未導入時のみ以下へインストールします。
 
 - Vim: `~/.vim/pack/minpac/opt/minpac`
-- Neovim: `${XDG_CONFIG_HOME:-~/.config}/nvim/pack/minpac/opt/minpac`
+- Neovim: `${XDG_DATA_HOME:-~/.local/share}/nvim/site/pack/minpac/opt/minpac`
 
 minpac の導入を行わない場合:
 
