@@ -13,7 +13,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install validation tools
         run: |
@@ -23,7 +23,8 @@ jobs:
       - name: Validate Bash
         run: |
           bash -n _bashrc _bash_env install.sh
-          shellcheck -e SC1090,SC1091 _bashrc _bash_env install.sh
+          shellcheck --shell=bash -e SC1090,SC1091 _bashrc _bash_env
+          shellcheck -e SC1090,SC1091 install.sh
 
       - name: Validate tmux
         run: |
