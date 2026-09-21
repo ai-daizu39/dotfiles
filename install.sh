@@ -5,6 +5,7 @@ REPO_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 BACKUP_ROOT=""
 MINIMAL_VIM=0
 INSTALL_MINPAC=1
+INSTALL_GIT_HOOKS=1
 MINPAC_REF="v3.0.0"
 BACKUP_CREATED=0
 
@@ -13,9 +14,10 @@ usage() {
 Usage: bash install.sh [options]
 
 Options:
-  --minimal-vim   Use _vimrc_min instead of _vimrc.
-  --skip-minpac   Do not clone minpac.
-  -h, --help      Show this help.
+  --minimal-vim     Use _vimrc_min instead of _vimrc.
+  --skip-minpac     Do not clone minpac.
+  --skip-git-hooks  Do not configure repository-local Git hooks.
+  -h, --help        Show this help.
 EOF
 }
 
@@ -26,6 +28,9 @@ while [ "$#" -gt 0 ]; do
       ;;
     --skip-minpac)
       INSTALL_MINPAC=0
+      ;;
+    --skip-git-hooks)
+      INSTALL_GIT_HOOKS=0
       ;;
     -h|--help)
       usage
@@ -137,9 +142,9 @@ fi
 if [ "$INSTALL_GIT_HOOKS" -eq 1 ]; then
   if git -C "$REPO_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     git -C "$REPO_DIR" config core.hooksPath .githooks
-    printf 'Configured Git hooks: %s/.githooks\\n' "$REPO_DIR"
+    printf 'Configured Git hooks: %s/.githooks\n' "$REPO_DIR"
   else
-    printf 'Not a Git working tree; skipping Git hook configuration.\\n' >&2
+    printf 'Not a Git working tree; skipping Git hook configuration.\n' >&2
   fi
 fi
 
