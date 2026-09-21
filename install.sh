@@ -134,6 +134,15 @@ if [ "$INSTALL_MINPAC" -eq 1 ]; then
   fi
 fi
 
+if [ "$INSTALL_GIT_HOOKS" -eq 1 ]; then
+  if git -C "$REPO_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    git -C "$REPO_DIR" config core.hooksPath .githooks
+    printf 'Configured Git hooks: %s/.githooks\\n' "$REPO_DIR"
+  else
+    printf 'Not a Git working tree; skipping Git hook configuration.\\n' >&2
+  fi
+fi
+
 if [ "$BACKUP_CREATED" -eq 1 ]; then
   printf '\nExisting files were backed up under: %s\n' "$BACKUP_ROOT"
 fi
