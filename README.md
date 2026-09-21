@@ -48,6 +48,12 @@ minpac の導入を行わない場合:
 bash install.sh --skip-minpac
 ```
 
+通常は `install.sh` 実行時に、このリポジトリだけの `core.hooksPath` を `.githooks` に設定します。Git hook を設定しない場合:
+
+```bash
+bash install.sh --skip-git-hooks
+```
+
 ## Vim / Neovim プラグイン
 
 Vim / Neovim を起動後、以下でプラグインを取得・更新できます。
@@ -86,6 +92,50 @@ WSL2 では Windows 版 Chrome の標準的なパスが存在する場合、自�
 - Bash が対話シェル
 
 これにより、SSH の非対話コマンド、scp、rsync、自動処理などを tmux が横取りしないようにしています。
+
+## 公開リポジトリ向け漏えい防止
+
+`git push` の直前に `.githooks/pre-push` が、これから送信される各コミットの追加内容を検査します。現在のファイルだけではなく途中のコミットも検査するため、一度コミットした秘密情報を次のコミットで削除した場合も検出対象です。
+
+標準では以下を検査します。
+
+- 秘密鍵ファイル、`.env`、秘密鍵・証明書系のファイル名
+- 秘密鍵の本文
+- GitHub / AWS / Slack の代表的な認証情報
+- `password`、`token`、`api_key`、`client_secret` 等への値の直接代入
+- 実在するメールアドレス
+- `/home/<user>`、`/Users/<user>`、`C:\\Users\\<user>` のようなユーザー固有パス
+- 実行環境のホームディレクトリ、ユーザー名、ホスト名
+
+会社名、社内ドメイン、社内ホスト名など、追加で公開禁止にしたい文字列はリポジトリへ値を保存せず環境変数で指定できます。
+
+```bash
+export PUBLIC_REPO_BLOCKLIST=
+- Bash の構文
+- ShellCheck
+- tmux 設定の読み込み
+- Vim 設定の起動
+- Neovim 設定の起動
+- minpac の `PackInit()` によるプラグイン定義の読み込み
+- 設定ファイルから抽出した固定 tag / branch がリモートに存在すること
+- minpac 本体が `v3.0.0` で導入されること
+
+ローカルでも最低限の構文確認ができます。
+
+```bash
+bash -n _bashrc _bash_env install.sh
+tmux -L dotfiles-test -f "$PWD/_tmux.conf" new-session -d -s dotfiles-test
+tmux -L dotfiles-test kill-server
+vim -Nu "$PWD/_vimrc" -n -es +'qa!'
+nvim --headless -u "$PWD/nvim/init.vim" +qa
+```
+internal.example.jp\nsecret-hostname'
+git push
+```
+
+Gitleaks がローカルにインストールされている場合は pre-push で追加スキャンします。未導入でも独自チェックは実行されます。GitHub 側でも `.github/workflows/security.yml` で独自チェックと `gitleaks/gitleaks-action@v3` を再実行します。
+
+検出した秘密値そのものはログへ出力せず、コミット、ファイル、検出種別のみを表示します。
 
 ## 検証
 
