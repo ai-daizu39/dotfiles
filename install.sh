@@ -5,6 +5,7 @@ REPO_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 BACKUP_ROOT=""
 MINIMAL_VIM=0
 INSTALL_MINPAC=1
+MINPAC_REF="v3.0.0"
 BACKUP_CREATED=0
 
 usage() {
@@ -103,7 +104,8 @@ install_minpac() {
   fi
 
   mkdir -p "$(dirname -- "$destination")"
-  git clone --depth 1 https://github.com/k-takata/minpac.git "$destination"
+  git clone --depth 1 --branch "$MINPAC_REF" \
+    https://github.com/k-takata/minpac.git "$destination"
 }
 
 if [ "$INSTALL_MINPAC" -eq 1 ]; then
