@@ -61,12 +61,29 @@ backup_target() {
   printf 'Backed up: %s -> %s\n' "$target" "$backup"
 }
 
+canonical_path() {
+  local path="$1"
+  local dir base
+
+  dir="$(dirname -- "$path")"
+  base="$(basename -- "$path")"
+  printf '%s/%s\n' "$(cd -P -- "$dir" && pwd)" "$base"
+}
+
 link_target() {
   local source="$1"
   local target="$2"
   local current=""
+  local source_canonical target_canonical
 
   mkdir -p "$(dirname -- "$target")"
+
+  source_canonical="$(canonical_path "$source")"
+  target_canonical="$(canonical_path "$target")"
+  if [ "$source_canonical" = "$target_canonical" ]; then
+    printf 'Already in place: %s\n' "$target"
+    return
+  fi
 
   if [ -L "$target" ]; then
     current="$(readlink "$target")"
