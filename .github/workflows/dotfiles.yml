@@ -1,0 +1,40 @@
+name: dotfiles
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install validation tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck tmux vim neovim
+
+      - name: Validate Bash
+        run: |
+          bash -n _bashrc _bash_env install.sh
+          shellcheck -e SC1090,SC1091 _bashrc _bash_env install.sh
+
+      - name: Validate tmux
+        run: |
+          tmux -L dotfiles-ci -f "$PWD/_tmux.conf" new-session -d -s dotfiles-ci
+          tmux -L dotfiles-ci kill-server
+
+      - name: Validate Vim
+        run: |
+          vim -Nu "$PWD/_vimrc" -n -es +'qa!'
+          vim -Nu "$PWD/_vimrc_min" -n -es +'qa!'
+
+      - name: Validate Neovim
+        run: |
+          nvim --headless -u "$PWD/nvim/init.vim" +qa
