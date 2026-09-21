@@ -1,17 +1,18 @@
-# refs: https://wiki.archlinux.jp/index.php/IBus
-# 別クライアントにXWindowの画面を表示するとき
-# e.g. DISPLAY=192.168.0.2:0.0
-# export DISPLAY=
+# GUI applications can set DISPLAY explicitly when needed.
+# Example: export DISPLAY=192.168.0.2:0.0
 
-# refs: https://wiki.archlinux.jp/index.php/Tmux
-if which tmux >/dev/null 2>&1; then
-	if [ -z $TMUX ]; then
-		exec tmux
-	fi
+# Start tmux automatically only for an interactive terminal.
+# Avoid taking over non-interactive SSH commands, scp/rsync, and automation.
+if command -v tmux >/dev/null 2>&1 \
+  && [ -z "${TMUX:-}" ] \
+  && [ -t 0 ] \
+  && [ -t 1 ]; then
+  exec tmux
 fi
 
-# $TMUX_PANE = %0 : tmuxの初回起動時 (tmuxのpaneが0番目の時)
-if [ ! -z $TMUX -a "$TMUX_PANE" = %0 ]; then
-	run-parts --lsbsysinit /etc/update-motd.d
+# Show MOTD once in the first tmux pane.
+if [ -n "${TMUX:-}" ] && [ "${TMUX_PANE:-}" = "%0" ] \
+  && command -v run-parts >/dev/null 2>&1 \
+  && [ -d /etc/update-motd.d ]; then
+  run-parts --lsbsysinit /etc/update-motd.d
 fi
-

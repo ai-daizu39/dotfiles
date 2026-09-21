@@ -1,0 +1,153 @@
+name: dotfiles
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install validation tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck tmux vim neovim
+
+      - name: Validate Bash
+        run: |
+          bash -n _bashrc _bash_env install.sh
+          shellcheck --shell=bash -e SC1090,SC1091 _bashrc _bash_env
+          shellcheck -e SC1090,SC1091 install.sh
+
+      - name: Validate installer
+        run: |
+          test_home="$(mktemp -d)"
+          printf 'original-vimrc\n' > "$test_home/.vimrc"
+
+          HOME="$test_home" \
+            XDG_CONFIG_HOME="$test_home/.config" \
+            XDG_DATA_HOME="$test_home/.local/share" \
+            bash install.sh
+
+          test -L "$test_home/.bashrc"
+          test -L "$test_home/.vimrc"
+          test -L "$test_home/.config/nvim"
+          test -d "$test_home/.vim/pack/minpac/opt/minpac/.git"
+          test -d "$test_home/.local/share/nvim/site/pack/minpac/opt/minpac/.git"
+          test "$(git -C "$test_home/.vim/pack/minpac/opt/minpac" describe --tags --exact-match)" = "v3.0.0"
+          test "$(git -C "$test_home/.local/share/nvim/site/pack/minpac/opt/minpac" describe --tags --exact-match)" = "v3.0.0"
+          test ! -e "$PWD/nvim/pack"
+
+          first_backup="$(
+            find "$test_home/.dotfiles-backup" -mindepth 1 -maxdepth 1 -type d -print -quit
+          )"
+          test -n "$first_backup"
+          test "$(cat "$first_backup/.vimrc")" = "original-vimrc"
+
+          HOME="$test_home" \
+            XDG_CONFIG_HOME="$test_home/.config" \
+            XDG_DATA_HOME="$test_home/.local/share" \
+            bash install.sh --minimal-vim --skip-minpac
+
+          test "$(readlink "$test_home/.vimrc")" = "$PWD/_vimrc_min"
+          test "$(cat "$first_backup/.vimrc")" = "original-vimrc"
+          test "$(find "$test_home/.dotfiles-backup" -mindepth 1 -maxdepth 1 -type d | wc -l)" -eq 2
+
+          same_path_home="$(mktemp -d)"
+          nvim_hash_before="$(git hash-object "$PWD/nvim/init.vim")"
+
+          HOME="$same_path_home" \
+            XDG_CONFIG_HOME="$PWD" \
+            XDG_DATA_HOME="$same_path_home/.local/share" \
+            bash install.sh --skip-minpac
+
+          test -d "$PWD/nvim"
+          test ! -L "$PWD/nvim"
+          test -f "$PWD/nvim/init.vim"
+          test "$(git hash-object "$PWD/nvim/init.vim")" = "$nvim_hash_before"
+          test -z "$(git status --porcelain -- nvim)"
+
+      - name: Validate tmux
+        run: |
+          tmux -L dotfiles-ci -f "$PWD/_tmux.conf" new-session -d -s dotfiles-ci
+          tmux -L dotfiles-ci kill-server
+
+      - name: Validate plugin definitions
+        run: |
+          test_home="$(mktemp -d)"
+          HOME="$test_home" \
+            XDG_CONFIG_HOME="$test_home/.config" \
+            XDG_DATA_HOME="$test_home/.local/share" \
+            bash install.sh
+
+          HOME="$test_home" \
+            vim -Nu "$PWD/_vimrc" -n -es +'call PackInit()' +'qa!'
+
+          HOME="$test_home" \
+            vim -Nu "$PWD/_vimrc_min" -n -es +'call PackInit()' +'qa!'
+
+          HOME="$test_home" \
+            XDG_CONFIG_HOME="$test_home/.config" \
+            XDG_DATA_HOME="$test_home/.local/share" \
+            nvim --headless -u "$PWD/nvim/init.vim" +'call PackInit()' +qa
+
+          python3 - <<'PY' > "$RUNNER_TEMP/minpac-refs.tsv"
+          import re
+          from pathlib import Path
+
+          add_re = re.compile(
+              r"^\s*call\s+minpac#add\('([^']+)'(?:,\s*\{(.*)\})?\)"
+          )
+          ref_re = re.compile(r"'(rev|branch)'\s*:\s*'([^']+)'")
+          refs = set()
+
+          for filename in ("_vimrc", "_vimrc_min", "nvim/init.vim"):
+              for line in Path(filename).read_text(encoding="utf-8").splitlines():
+                  if line.lstrip().startswith('"'):
+                      continue
+                  match = add_re.match(line)
+                  if not match or not match.group(2):
+                      continue
+                  ref_match = ref_re.search(match.group(2))
+                  if ref_match:
+                      refs.add((match.group(1), ref_match.group(1), ref_match.group(2)))
+
+          for plugin_repo, kind, ref in sorted(refs):
+              print(f"{plugin_repo}\t{kind}\t{ref}")
+          PY
+
+          tab="$(printf '\t')"
+          while IFS="$tab" read -r plugin_repo ref_kind plugin_ref; do
+            case "$ref_kind" in
+              rev)
+                git ls-remote --exit-code --tags \
+                  "https://github.com/$plugin_repo.git" "refs/tags/$plugin_ref" >/dev/null
+                ;;
+              branch)
+                git ls-remote --exit-code --heads \
+                  "https://github.com/$plugin_repo.git" "refs/heads/$plugin_ref" >/dev/null
+                ;;
+              *)
+                printf 'Unsupported minpac ref kind: %s\n' "$ref_kind" >&2
+                exit 1
+                ;;
+            esac
+          done < "$RUNNER_TEMP/minpac-refs.tsv"
+
+      - name: Validate Vim
+        run: |
+          vim -Nu "$PWD/_vimrc" -n -es +'qa!'
+          vim -Nu "$PWD/_vimrc_min" -n -es +'qa!'
+
+      - name: Validate Neovim
+        run: |
+          nvim --headless -u "$PWD/nvim/init.vim" +qa

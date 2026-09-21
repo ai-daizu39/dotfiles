@@ -107,19 +107,19 @@ function! PackInit() abort
 	packadd minpac
 
 	call minpac#init()
-	" call minpac#add('k-takata/minpac', {'type': 'opt', 'branch': 'v3.0.0'})
+	" minpac itself is installed by install.sh at v3.0.0.
 
 	" Add other plugins here
-	call minpac#add('vim-scripts/DrawIt', {'branch': '13'})
-	call minpac#add('junegunn/vim-easy-align', {'branch': '2.10.0'})
-	call minpac#add('tpope/vim-commentary', {'branch': 'v1.3'})
-	call minpac#add('tpope/vim-surround', {'branch': 'v2.1'})
-	call minpac#add('tpope/vim-repeat', {'branch': 'v1.2'})
-	call minpac#add('kana/vim-textobj-user', {'branch': '0.7.6'})
-	call minpac#add('kana/vim-textobj-entire', {'branch': '0.0.4'})
+	call minpac#add('vim-scripts/DrawIt', {'rev': '13'})
+	call minpac#add('junegunn/vim-easy-align', {'rev': '2.10.0'})
+	call minpac#add('tpope/vim-commentary', {'rev': 'v1.3'})
+	call minpac#add('tpope/vim-surround', {'rev': 'v2.1'})
+	call minpac#add('tpope/vim-repeat', {'rev': 'v1.2'})
+	call minpac#add('kana/vim-textobj-user', {'rev': '0.7.6'})
+	call minpac#add('kana/vim-textobj-entire', {'rev': '0.0.4'})
 
 	" colorscheme
-	call minpac#add('tpope/vim-vividchalk', {'branch': 'v2.0'})
+	call minpac#add('tpope/vim-vividchalk', {'rev': 'v2.0'})
 endfunction
 
 " Define user commands for updating/cleaning the plugins.
