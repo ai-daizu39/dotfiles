@@ -121,16 +121,16 @@ function! PackInit() abort
 	" call minpac#add('k-takata/minpac', {'type': 'opt', 'branch': 'v3.0.0'})
 
 	" Add other plugins here
-	call minpac#add('vim-scripts/DrawIt')
-	call minpac#add('junegunn/vim-easy-align')
-	call minpac#add('tpope/vim-commentary')
-	call minpac#add('tpope/vim-surround')
-	call minpac#add('tpope/vim-repeat')
-	call minpac#add('kana/vim-textobj-user')
-	call minpac#add('kana/vim-textobj-entire')
+	call minpac#add('vim-scripts/DrawIt', {'rev': '13'})
+	call minpac#add('junegunn/vim-easy-align', {'rev': '2.10.0'})
+	call minpac#add('tpope/vim-commentary', {'rev': 'v1.3'})
+	call minpac#add('tpope/vim-surround', {'rev': 'v2.1'})
+	call minpac#add('tpope/vim-repeat', {'rev': 'v1.2'})
+	call minpac#add('kana/vim-textobj-user', {'rev': '0.7.6'})
+	call minpac#add('kana/vim-textobj-entire', {'rev': '0.0.4'})
 
 	" colorscheme
-	call minpac#add('tpope/vim-vividchalk')
+	call minpac#add('tpope/vim-vividchalk', {'rev': 'v2.0'})
 
 	" 非同期補完プラグイン
 	" call minpac#add('prabirshrestha/asyncomplete.vim')
