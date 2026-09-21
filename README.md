@@ -60,7 +60,7 @@ Vim / Neovim を起動後、以下でプラグインを取得・更新できま�
 :PackClean
 ```
 
-プラグイン指定では、タグやリリース名を `branch` として扱わず、通常は各リポジトリのデフォルトブランチを利用します。特定リビジョンへ固定する場合は minpac の `rev` オプションを使用します。
+Vim の既存プラグインは、従来指定していたバージョンタグを minpac の `rev` オプションで固定しています。`branch` は実在するブランチを追従する場合にのみ使用し、Neovim の `coc.nvim` は `release` ブランチを利用します。
 
 ## Neovim の Markdown preview
 
@@ -94,6 +94,8 @@ GitHub Actions で以下を確認します。
 - tmux 設定の読み込み
 - Vim 設定の起動
 - Neovim 設定の起動
+- minpac の `PackInit()` によるプラグイン定義の読み込み
+- 固定した tag / branch がリモートに存在すること
 
 ローカルでも最低限の構文確認ができます。
 
