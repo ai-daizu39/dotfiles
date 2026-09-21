@@ -2,7 +2,7 @@
 set -euo pipefail
 
 REPO_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
-BACKUP_ROOT="${HOME}/.dotfiles-backup/$(date +%Y%m%d-%H%M%S)"
+BACKUP_ROOT=""
 MINIMAL_VIM=0
 INSTALL_MINPAC=1
 BACKUP_CREATED=0
@@ -48,7 +48,8 @@ backup_target() {
   fi
 
   if [ "$BACKUP_CREATED" -eq 0 ]; then
-    mkdir -p "$BACKUP_ROOT"
+    mkdir -p "$HOME/.dotfiles-backup"
+    BACKUP_ROOT="$(mktemp -d "$HOME/.dotfiles-backup/$(date +%Y%m%d-%H%M%S).XXXXXX")"
     BACKUP_CREATED=1
   fi
 
