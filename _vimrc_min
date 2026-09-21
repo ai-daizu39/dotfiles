@@ -110,16 +110,16 @@ function! PackInit() abort
 	" call minpac#add('k-takata/minpac', {'type': 'opt', 'branch': 'v3.0.0'})
 
 	" Add other plugins here
-	call minpac#add('vim-scripts/DrawIt', {'branch': '13'})
-	call minpac#add('junegunn/vim-easy-align', {'branch': '2.10.0'})
-	call minpac#add('tpope/vim-commentary', {'branch': 'v1.3'})
-	call minpac#add('tpope/vim-surround', {'branch': 'v2.1'})
-	call minpac#add('tpope/vim-repeat', {'branch': 'v1.2'})
-	call minpac#add('kana/vim-textobj-user', {'branch': '0.7.6'})
-	call minpac#add('kana/vim-textobj-entire', {'branch': '0.0.4'})
+	call minpac#add('vim-scripts/DrawIt')
+	call minpac#add('junegunn/vim-easy-align')
+	call minpac#add('tpope/vim-commentary')
+	call minpac#add('tpope/vim-surround')
+	call minpac#add('tpope/vim-repeat')
+	call minpac#add('kana/vim-textobj-user')
+	call minpac#add('kana/vim-textobj-entire')
 
 	" colorscheme
-	call minpac#add('tpope/vim-vividchalk', {'branch': 'v2.0'})
+	call minpac#add('tpope/vim-vividchalk')
 endfunction
 
 " Define user commands for updating/cleaning the plugins.
