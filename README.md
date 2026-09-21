@@ -24,13 +24,13 @@ Bash、tmux、Vim、Neovim の個人設定を管理するリポジトリです�
 ```bash
 git clone https://github.com/ai-daizu39/dotfiles.git ~/dotfiles
 cd ~/dotfiles
-./install.sh
+bash install.sh
 ```
 
 Vim を最小構成にする場合:
 
 ```bash
-./install.sh --minimal-vim
+bash install.sh --minimal-vim
 ```
 
 既存の設定ファイルがある場合は、`~/.dotfiles-backup/<timestamp>/` 以下へ退避してからシンボリックリンクを作成します。
@@ -43,7 +43,7 @@ Vim を最小構成にする場合:
 minpac の導入を行わない場合:
 
 ```bash
-./install.sh --skip-minpac
+bash install.sh --skip-minpac
 ```
 
 ## Vim / Neovim プラグイン
