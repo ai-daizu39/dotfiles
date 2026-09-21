@@ -107,20 +107,12 @@ jobs:
                   if ref_match:
                       refs.add((match.group(1), ref_match.group(1), ref_match.group(2)))
 
-          for repo, kind, ref in sorted(refs):
-              print(f"{repo}\t{kind}\t{ref}")
+          for plugin_repo, kind, ref in sorted(refs):
+              print(f"{plugin_repo}\t{kind}\t{ref}")
           PY
 
-          while IFS=
-      - name: Validate Vim
-        run: |
-          vim -Nu "$PWD/_vimrc" -n -es +'qa!'
-          vim -Nu "$PWD/_vimrc_min" -n -es +'qa!'
-
-      - name: Validate Neovim
-        run: |
-          nvim --headless -u "$PWD/nvim/init.vim" +qa
-\t' read -r plugin_repo ref_kind plugin_ref; do
+          tab="$(printf '\t')"
+          while IFS="$tab" read -r plugin_repo ref_kind plugin_ref; do
             case "$ref_kind" in
               rev)
                 git ls-remote --exit-code --tags \
