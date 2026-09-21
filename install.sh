@@ -9,7 +9,7 @@ BACKUP_CREATED=0
 
 usage() {
   cat <<'EOF'
-Usage: ./install.sh [options]
+Usage: bash install.sh [options]
 
 Options:
   --minimal-vim   Use _vimrc_min instead of _vimrc.
