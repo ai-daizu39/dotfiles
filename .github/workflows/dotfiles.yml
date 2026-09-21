@@ -29,7 +29,10 @@ jobs:
       - name: Validate installer
         run: |
           test_home="$(mktemp -d)"
-          HOME="$test_home" bash install.sh
+          HOME="$test_home" \
+            XDG_CONFIG_HOME="$test_home/.config" \
+            XDG_DATA_HOME="$test_home/.local/share" \
+            bash install.sh
           test -L "$test_home/.bashrc"
           test -L "$test_home/.config/nvim"
           test -d "$test_home/.vim/pack/minpac/opt/minpac/.git"
