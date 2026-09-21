@@ -90,6 +90,7 @@ else
 fi
 
 NVIM_CONFIG_HOME="${XDG_CONFIG_HOME:-"$HOME/.config"}/nvim"
+NVIM_DATA_HOME="${XDG_DATA_HOME:-"$HOME/.local/share"}/nvim"
 link_target "$REPO_DIR/nvim" "$NVIM_CONFIG_HOME"
 
 install_minpac() {
@@ -107,7 +108,7 @@ install_minpac() {
 if [ "$INSTALL_MINPAC" -eq 1 ]; then
   if command -v git >/dev/null 2>&1; then
     install_minpac "$HOME/.vim/pack/minpac/opt/minpac"
-    install_minpac "$NVIM_CONFIG_HOME/pack/minpac/opt/minpac"
+    install_minpac "$NVIM_DATA_HOME/site/pack/minpac/opt/minpac"
   else
     printf 'git is not installed; skipping minpac installation.\n' >&2
   fi
