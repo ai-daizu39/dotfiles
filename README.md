@@ -33,7 +33,7 @@ Vim を最小構成にする場合:
 bash install.sh --minimal-vim
 ```
 
-既存の設定ファイルがある場合は、`~/.dotfiles-backup/<timestamp>/` 以下へ退避してからシンボリックリンクを作成します。
+既存の設定ファイルがある場合は、`~/.dotfiles-backup/<timestamp>.<random>/` 以下へ退避してからシンボリックリンクを作成します。バックアップ先は実行ごとに一意になるため、連続実行でも既存バックアップを上書きしません。
 
 `install.sh` は Git が利用できる場合、minpac も未導入時のみ以下へインストールします。
 
