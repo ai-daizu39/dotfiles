@@ -35,7 +35,7 @@ bash install.sh --minimal-vim
 
 既存の設定ファイルがある場合は、`~/.dotfiles-backup/<timestamp>.<random>/` 以下へ退避してからシンボリックリンクを作成します。バックアップ先は実行ごとに一意になるため、連続実行でも既存バックアップを上書きしません。
 
-`install.sh` は Git が利用できる場合、minpac も未導入時のみ以下へインストールします。
+`install.sh` は Git が利用できる場合、minpac も未導入時のみ `v3.0.0` に固定して以下へインストールします。
 
 - Vim: `~/.vim/pack/minpac/opt/minpac`
 - Neovim: `${XDG_DATA_HOME:-~/.local/share}/nvim/site/pack/minpac/opt/minpac`
@@ -95,7 +95,8 @@ GitHub Actions で以下を確認します。
 - Vim 設定の起動
 - Neovim 設定の起動
 - minpac の `PackInit()` によるプラグイン定義の読み込み
-- 固定した tag / branch がリモートに存在すること
+- 設定ファイルから抽出した固定 tag / branch がリモートに存在すること
+- minpac 本体が `v3.0.0` で導入されること
 
 ローカルでも最低限の構文確認ができます。
 
