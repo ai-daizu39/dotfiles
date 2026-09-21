@@ -26,6 +26,16 @@ jobs:
           shellcheck --shell=bash -e SC1090,SC1091 _bashrc _bash_env
           shellcheck -e SC1090,SC1091 install.sh
 
+      - name: Validate installer
+        run: |
+          test_home="$(mktemp -d)"
+          HOME="$test_home" bash install.sh
+          test -L "$test_home/.bashrc"
+          test -L "$test_home/.config/nvim"
+          test -d "$test_home/.vim/pack/minpac/opt/minpac/.git"
+          test -d "$test_home/.local/share/nvim/site/pack/minpac/opt/minpac/.git"
+          test ! -e "$PWD/nvim/pack"
+
       - name: Validate tmux
         run: |
           tmux -L dotfiles-ci -f "$PWD/_tmux.conf" new-session -d -s dotfiles-ci
