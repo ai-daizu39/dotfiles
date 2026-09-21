@@ -43,6 +43,8 @@ jobs:
           test -L "$test_home/.config/nvim"
           test -d "$test_home/.vim/pack/minpac/opt/minpac/.git"
           test -d "$test_home/.local/share/nvim/site/pack/minpac/opt/minpac/.git"
+          test "$(git -C "$test_home/.vim/pack/minpac/opt/minpac" describe --tags --exact-match)" = "v3.0.0"
+          test "$(git -C "$test_home/.local/share/nvim/site/pack/minpac/opt/minpac" describe --tags --exact-match)" = "v3.0.0"
           test ! -e "$PWD/nvim/pack"
 
           first_backup="$(
@@ -84,25 +86,56 @@ jobs:
             XDG_DATA_HOME="$test_home/.local/share" \
             nvim --headless -u "$PWD/nvim/init.vim" +'call PackInit()' +qa
 
-          check_tag() {
-            git ls-remote --exit-code --tags \
-              "https://github.com/$1.git" "refs/tags/$2" >/dev/null
-          }
+          python3 - <<'PY' > "$RUNNER_TEMP/minpac-refs.tsv"
+          import re
+          from pathlib import Path
 
-          check_branch() {
-            git ls-remote --exit-code --heads \
-              "https://github.com/$1.git" "refs/heads/$2" >/dev/null
-          }
+          add_re = re.compile(
+              r"^\s*call\s+minpac#add\('([^']+)'(?:,\s*\{(.*)\})?\)"
+          )
+          ref_re = re.compile(r"'(rev|branch)'\s*:\s*'([^']+)'")
+          refs = set()
 
-          check_tag vim-scripts/DrawIt 13
-          check_tag junegunn/vim-easy-align 2.10.0
-          check_tag tpope/vim-commentary v1.3
-          check_tag tpope/vim-surround v2.1
-          check_tag tpope/vim-repeat v1.2
-          check_tag kana/vim-textobj-user 0.7.6
-          check_tag kana/vim-textobj-entire 0.0.4
-          check_tag tpope/vim-vividchalk v2.0
-          check_branch neoclide/coc.nvim release
+          for filename in ("_vimrc", "_vimrc_min", "nvim/init.vim"):
+              for line in Path(filename).read_text(encoding="utf-8").splitlines():
+                  if line.lstrip().startswith('"'):
+                      continue
+                  match = add_re.match(line)
+                  if not match or not match.group(2):
+                      continue
+                  ref_match = ref_re.search(match.group(2))
+                  if ref_match:
+                      refs.add((match.group(1), ref_match.group(1), ref_match.group(2)))
+
+          for repo, kind, ref in sorted(refs):
+              print(f"{repo}\t{kind}\t{ref}")
+          PY
+
+          while IFS=
+      - name: Validate Vim
+        run: |
+          vim -Nu "$PWD/_vimrc" -n -es +'qa!'
+          vim -Nu "$PWD/_vimrc_min" -n -es +'qa!'
+
+      - name: Validate Neovim
+        run: |
+          nvim --headless -u "$PWD/nvim/init.vim" +qa
+\t' read -r plugin_repo ref_kind plugin_ref; do
+            case "$ref_kind" in
+              rev)
+                git ls-remote --exit-code --tags \
+                  "https://github.com/$plugin_repo.git" "refs/tags/$plugin_ref" >/dev/null
+                ;;
+              branch)
+                git ls-remote --exit-code --heads \
+                  "https://github.com/$plugin_repo.git" "refs/heads/$plugin_ref" >/dev/null
+                ;;
+              *)
+                printf 'Unsupported minpac ref kind: %s\n' "$ref_kind" >&2
+                exit 1
+                ;;
+            esac
+          done < "$RUNNER_TEMP/minpac-refs.tsv"
 
       - name: Validate Vim
         run: |
