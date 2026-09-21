@@ -17,6 +17,37 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Validate security tooling
+        shell: bash
+        run: |
+          python3 -m py_compile scripts/check-public-repo.py
+          bash -n .githooks/pre-push install.sh
+
+          test_repo="$(mktemp -d)"
+          git -C "$test_repo" init -q
+          git -C "$test_repo" config user.name "Leak Check Test"
+          git -C "$test_repo" config user.email "test@example.com"
+
+          printf 'safe=true\n' > "$test_repo/test.conf"
+          git -C "$test_repo" add test.conf
+          git -C "$test_repo" commit -qm "clean"
+          base_sha="$(git -C "$test_repo" rev-parse HEAD)"
+
+          printf 'api_%s=%s\n' 'key' 'definitely-not-a-real-secret-123456' >> "$test_repo/test.conf"
+          git -C "$test_repo" add test.conf
+          git -C "$test_repo" commit -qm "add test secret"
+          head_sha="$(git -C "$test_repo" rev-parse HEAD)"
+
+          if (
+            cd "$test_repo"
+            python3 "$GITHUB_WORKSPACE/scripts/check-public-repo.py" \
+              --base "$base_sha" \
+              --head "$head_sha"
+          ); then
+            echo "ERROR: leak scanner self-test did not block a credential." >&2
+            exit 1
+          fi
+
       - name: Check personal and local data
         shell: bash
         run: |
