@@ -128,20 +128,20 @@ function! PackInit() abort
 	" call minpac#add('k-takata/minpac', {'type': 'opt', 'branch': 'v3.0.0'})
 
 	" Add other plugins here
-	call minpac#add('vim-scripts/DrawIt', {'branch': 'stable'})
+	call minpac#add('vim-scripts/DrawIt')
 	call minpac#add('junegunn/vim-easy-align')
-	call minpac#add('tpope/vim-commentary', {'branch': 'stable'})
-	call minpac#add('tpope/vim-surround', {'branch': 'stable'})
-	call minpac#add('tpope/vim-repeat', {'branch': 'stable'})
-	call minpac#add('kana/vim-textobj-user', {'branch': 'stable'})
-	call minpac#add('kana/vim-textobj-entire', {'branch': 'stable'})
+	call minpac#add('tpope/vim-commentary')
+	call minpac#add('tpope/vim-surround')
+	call minpac#add('tpope/vim-repeat')
+	call minpac#add('kana/vim-textobj-user')
+	call minpac#add('kana/vim-textobj-entire')
 
 	" colorscheme
-	call minpac#add('tpope/vim-vividchalk', {'branch': 'stable'})
+	call minpac#add('tpope/vim-vividchalk')
 
   " neovim用
-	" call minpac#add('neovim/nvim-lspconfig', {'branch': 'stable'})
-	" call minpac#add('williamboman/nvim-lsp-installer', {'branch': 'stable'})
+	" call minpac#add('neovim/nvim-lspconfig')
+	" call minpac#add('williamboman/nvim-lsp-installer')
 
 	" markdown用
 	call minpac#add('vim-denops/denops.vim')
@@ -204,7 +204,11 @@ endtry
 "   augroup END
 " endif"
 
-let g:bufpreview_browser = "/mnt/c/Program Files/Google/Chrome/Application/chrome.exe"
+if exists('$BUF_PREVIEW_BROWSER') && !empty($BUF_PREVIEW_BROWSER)
+  let g:bufpreview_browser = $BUF_PREVIEW_BROWSER
+elseif executable('/mnt/c/Program Files/Google/Chrome/Application/chrome.exe')
+  let g:bufpreview_browser = '/mnt/c/Program Files/Google/Chrome/Application/chrome.exe'
+endif
 
 " lua require('lsp-settings')
 
