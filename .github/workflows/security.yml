@@ -61,6 +61,21 @@ jobs:
           quoted_sha="$(git -C "$test_repo" rev-parse HEAD)"
           expect_block --base "$base_sha" --head "$quoted_sha"
 
+          mkdir -p "$test_repo/scripts"
+          cp "$GITHUB_WORKSPACE/scripts/check-public-repo.py" \
+            "$test_repo/scripts/check-public-repo.py"
+          git -C "$test_repo" remote add origin https://example.invalid/repo.git
+          if (
+            cd "$test_repo"
+            printf 'refs/heads/test %s refs/heads/test %s\n' \
+              "$quoted_sha" "$zero_sha" |
+              "$GITHUB_WORKSPACE/.githooks/pre-push" \
+                origin https://example.invalid/repo.git
+          ); then
+            echo "ERROR: pre-push hook accepted a blocked commit." >&2
+            exit 1
+          fi
+
           git -C "$test_repo" update-ref refs/remotes/origin/main "$base_sha"
           expect_block \
             --local-sha "$quoted_sha" \
