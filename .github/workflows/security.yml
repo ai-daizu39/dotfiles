@@ -114,6 +114,21 @@ jobs:
               --head "$deletion_sha"
           )
 
+          reset_test_repo
+          printf 'legacy=true\n' > "$test_repo/.env"
+          git -C "$test_repo" add .env
+          git -C "$test_repo" commit -qm "legacy rename source"
+          rename_base_sha="$(git -C "$test_repo" rev-parse HEAD)"
+          git -C "$test_repo" mv .env public.conf
+          git -C "$test_repo" commit -qm "rename legacy sensitive filename"
+          rename_head_sha="$(git -C "$test_repo" rev-parse HEAD)"
+          (
+            cd "$test_repo"
+            python3 "$GITHUB_WORKSPACE/scripts/check-public-repo.py" \
+              --base "$rename_base_sha" \
+              --head "$rename_head_sha"
+          )
+
       - name: Check personal and local data
         shell: bash
         run: |
