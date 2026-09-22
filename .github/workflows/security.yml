@@ -117,6 +117,15 @@ jobs:
           expect_block --base "$base_sha" --head "$strict_placeholder_sha"
 
           reset_test_repo
+          printf '%s%s=%s\n' '+++' 'password' \
+            'definitely-not-a-real-secret-123456' \
+            > "$test_repo/test.conf"
+          git -C "$test_repo" add test.conf
+          git -C "$test_repo" commit -qm "plus-prefixed secret line"
+          plus_prefixed_sha="$(git -C "$test_repo" rev-parse HEAD)"
+          expect_block --base "$base_sha" --head "$plus_prefixed_sha"
+
+          reset_test_repo
           printf '%s=%s\n' 'password' '$PASSWORD-suffix-secret' \
             > "$test_repo/test.conf"
           git -C "$test_repo" add test.conf
@@ -172,6 +181,26 @@ jobs:
           git -C "$test_repo" commit -qm "sensitive env filename"
           env_production_sha="$(git -C "$test_repo" rev-parse HEAD)"
           expect_block --base "$base_sha" --head "$env_production_sha"
+
+          reset_test_repo
+          git -C "$test_repo" switch -q -C merge-left "$base_sha"
+          printf 'left=true\n' > "$test_repo/left.conf"
+          git -C "$test_repo" add left.conf
+          git -C "$test_repo" commit -qm "merge left parent"
+          merge_left_sha="$(git -C "$test_repo" rev-parse HEAD)"
+
+          git -C "$test_repo" switch -q -C merge-right "$base_sha"
+          printf 'right=true\n' > "$test_repo/right.conf"
+          git -C "$test_repo" add right.conf
+          git -C "$test_repo" commit -qm "merge right parent"
+
+          git -C "$test_repo" switch -q merge-left
+          git -C "$test_repo" merge -q --no-ff --no-commit merge-right
+          printf 'safe=true\n' > "$test_repo/.env"
+          git -C "$test_repo" add .env
+          git -C "$test_repo" commit -qm "merge introduces sensitive filename"
+          merge_sensitive_sha="$(git -C "$test_repo" rev-parse HEAD)"
+          expect_block --base "$merge_left_sha" --head "$merge_sensitive_sha"
 
           reset_test_repo
           printf 'legacy=true\n' > "$test_repo/.env"
