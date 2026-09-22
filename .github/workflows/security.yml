@@ -306,6 +306,7 @@ jobs:
           python3 scripts/check-public-repo.py "${scanner_args[@]}"
 
       - name: Scan secrets with Gitleaks
+        if: github.event_name != 'push' || github.event.deleted != true
         uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
