@@ -104,30 +104,29 @@ def outgoing_commits(
     if head == ZERO_SHA:
         return []
 
+    args = ["rev-list", "--reverse", head]
     if base and base != ZERO_SHA:
-        output = git("rev-list", "--reverse", f"{base}..{head}")
-        return [line for line in output.splitlines() if line]
+        args.append(f"^{base}")
 
     if current_refs:
         current = set(current_refs)
         refs = git("for-each-ref", "--format=%(refname)").splitlines()
         other_refs = [ref for ref in refs if ref and ref not in current]
-        args = ["rev-list", "--reverse", head]
         if other_refs:
             args.extend(["--not", *other_refs])
         output = git(*args)
     elif remote_name:
         output = git(
-            "rev-list",
-            "--reverse",
-            head,
+            *args,
             "--not",
             f"--remotes={remote_name}",
         )
+    elif base and base != ZERO_SHA:
+        output = git(*args)
     else:
         # Safe fallback for a brand-new ref when no destination context is
         # available: scan all commits reachable from the pushed head.
-        output = git("rev-list", "--reverse", head)
+        output = git(*args)
 
     return [line for line in output.splitlines() if line]
 
