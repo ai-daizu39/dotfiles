@@ -15,7 +15,10 @@ ZERO_SHA = "0" * 40
 
 PRIVATE_FILE_PATTERNS = (
     re.compile(r"(^|/)(?:id_rsa|id_dsa|id_ecdsa|id_ed25519)$", re.I),
-    re.compile(r"(^|/)\.env(?:\..+)?$", re.I),
+    re.compile(
+        r"(^|/)\.env(?:\.(?!(?:example|sample|template|dist)$).+)?$",
+        re.I,
+    ),
     re.compile(r"\.(?:key|pem|p12|pfx)$", re.I),
     re.compile(r"(^|/)(?:credentials?|secrets?)\.(?:json|ya?ml|toml)$", re.I),
 )
