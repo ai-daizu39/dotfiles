@@ -12,7 +12,6 @@ import sys
 from pathlib import PurePosixPath
 
 ZERO_SHA = "0" * 40
-SELF_PATH = "scripts/check-public-repo.py"
 
 PRIVATE_FILE_PATTERNS = (
     re.compile(r"(^|/)(?:id_rsa|id_dsa|id_ecdsa|id_ed25519)$", re.I),
@@ -49,9 +48,19 @@ RULES = (
 
 GENERIC_SECRET_RE = re.compile(
     r"""(?ix)
-    \b(password|passwd|token|api[_-]?key|client[_-]?secret|access[_-]?key|secret)
-    \b\s*[:=]\s*["']?([^\s"'#]{8,})
+    ["']?
+    \b(password|passwd|token|api[_-]?key|client[_-]?secret|access[_-]?key|secret)\b
+    ["']?\s*[:=]\s*
+    (?:
+        "([^"\r\n]{8,})"
+        | '([^'\r\n]{8,})'
+        | (\$\{[A-Za-z_][A-Za-z0-9_]*\}|\$[A-Za-z_][A-Za-z0-9_]*|\{\{[^{}\r\n]+\}\}|<[A-Za-z0-9_.:-]+>|[^\s"'#,}\]]{8,})
+    )
     """
+)
+
+TEMPLATE_SECRET_RE = re.compile(
+    r"^(?:\$\{[A-Za-z_][A-Za-z0-9_]*\}|\$[A-Za-z_][A-Za-z0-9_]*|\{\{[^{}\r\n]+\}\}|<[A-Za-z0-9_.:-]+>)$"
 )
 
 SAFE_EMAIL_DOMAINS = {
@@ -83,14 +92,39 @@ def git(*args: str) -> str:
     return result.stdout
 
 
-def outgoing_commits(base: str, head: str) -> list[str]:
+def outgoing_commits(
+    base: str,
+    head: str,
+    remote_name: str | None = None,
+    current_refs: list[str] | None = None,
+) -> list[str]:
     if head == ZERO_SHA:
         return []
 
     if base and base != ZERO_SHA:
         output = git("rev-list", "--reverse", f"{base}..{head}")
+        return [line for line in output.splitlines() if line]
+
+    if current_refs:
+        current = set(current_refs)
+        refs = git("for-each-ref", "--format=%(refname)").splitlines()
+        other_refs = [ref for ref in refs if ref and ref not in current]
+        args = ["rev-list", "--reverse", head]
+        if other_refs:
+            args.extend(["--not", *other_refs])
+        output = git(*args)
+    elif remote_name:
+        output = git(
+            "rev-list",
+            "--reverse",
+            head,
+            "--not",
+            f"--remotes={remote_name}",
+        )
     else:
-        output = git("rev-list", "--reverse", head, "--not", "--remotes")
+        # Safe fallback for a brand-new ref when no destination context is
+        # available: scan all commits reachable from the pushed head.
+        output = git("rev-list", "--reverse", head)
 
     return [line for line in output.splitlines() if line]
 
@@ -101,6 +135,7 @@ def changed_paths(commit: str) -> list[str]:
         "--root",
         "--no-commit-id",
         "--name-only",
+        "--diff-filter=ACMRTUXB",
         "-r",
         commit,
     )
@@ -153,11 +188,9 @@ def secret_value_is_placeholder(value: str) -> bool:
     normalized = value.strip("'\"").rstrip(",;")
     lower = normalized.lower()
 
-    if normalized.startswith(("$", "${", "{{", "<")):
-        return True
     if lower in SAFE_SECRET_VALUES:
         return True
-    if "example" in lower or "dummy" in lower or "placeholder" in lower:
+    if TEMPLATE_SECRET_RE.fullmatch(normalized):
         return True
     return False
 
@@ -169,9 +202,13 @@ def scan_line(line: str, markers: list[tuple[str, str]]) -> set[str]:
         if regex.search(line):
             findings.add(name)
 
-    generic = GENERIC_SECRET_RE.search(line)
-    if generic and not secret_value_is_placeholder(generic.group(2)):
-        findings.add("credential-assignment")
+    for generic in GENERIC_SECRET_RE.finditer(line):
+        value = next(
+            (group for group in generic.groups()[1:] if group is not None),
+            "",
+        )
+        if value and not secret_value_is_placeholder(value):
+            findings.add("credential-assignment")
 
     for match in EMAIL_RE.finditer(line):
         if match.group(1).lower() not in SAFE_EMAIL_DOMAINS:
@@ -193,6 +230,8 @@ def main() -> int:
     parser.add_argument("--head")
     parser.add_argument("--local-sha")
     parser.add_argument("--remote-sha", default=ZERO_SHA)
+    parser.add_argument("--remote-name")
+    parser.add_argument("--current-ref", action="append", default=[])
     args = parser.parse_args()
 
     head = args.head or args.local_sha
@@ -201,7 +240,12 @@ def main() -> int:
     if not head:
         parser.error("--head or --local-sha is required")
 
-    commits = outgoing_commits(base, head)
+    commits = outgoing_commits(
+        base,
+        head,
+        remote_name=args.remote_name,
+        current_refs=args.current_ref,
+    )
     if not commits:
         print("public-repo check: no outgoing commits")
         return 0
@@ -213,20 +257,19 @@ def main() -> int:
         short = commit[:12]
 
         for path in changed_paths(commit):
-            if path == SELF_PATH:
-                continue
             filename = PurePosixPath(path).as_posix()
             if any(pattern.search(filename) for pattern in PRIVATE_FILE_PATTERNS):
                 findings.add((short, filename, "sensitive-filename"))
 
         for path, line in added_lines(commit):
-            if path == SELF_PATH:
-                continue
             for kind in scan_line(line, markers):
                 findings.add((short, path or "(unknown)", kind))
 
     if findings:
-        print("ERROR: potentially private or secret data found in outgoing commits.", file=sys.stderr)
+        print(
+            "ERROR: potentially private or secret data found in outgoing commits.",
+            file=sys.stderr,
+        )
         print("Matched values are intentionally not printed.", file=sys.stderr)
         for commit, path, kind in sorted(findings):
             print(f"  {commit}  {path}  [{kind}]", file=sys.stderr)
