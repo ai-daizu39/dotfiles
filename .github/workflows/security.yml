@@ -226,6 +226,27 @@ jobs:
           )
 
           reset_test_repo
+          git -C "$test_repo" switch -q -C published-topic "$base_sha"
+          printf 'already-public=true\n' > "$test_repo/.env"
+          git -C "$test_repo" add .env
+          git -C "$test_repo" commit -qm "already published sensitive topic"
+          published_topic_sha="$(git -C "$test_repo" rev-parse HEAD)"
+          git -C "$test_repo" update-ref \
+            refs/remotes/origin/topic "$published_topic_sha"
+
+          git -C "$test_repo" switch -q -C published-main "$base_sha"
+          git -C "$test_repo" merge -q --no-ff \
+            -m "merge already published topic" published-topic
+          published_merge_sha="$(git -C "$test_repo" rev-parse HEAD)"
+          (
+            cd "$test_repo"
+            python3 "$GITHUB_WORKSPACE/scripts/check-public-repo.py" \
+              --base "$base_sha" \
+              --head "$published_merge_sha" \
+              --remote-name origin
+          )
+
+          reset_test_repo
           printf 'legacy=true\n' > "$test_repo/.env"
           git -C "$test_repo" add .env
           git -C "$test_repo" commit -qm "legacy sensitive filename"
@@ -263,12 +284,12 @@ jobs:
             head_sha="${{ github.event.pull_request.head.sha }}"
           else
             base_sha="${{ github.event.before }}"
-            head_sha="${{ github.sha }}"
+            head_sha="${{ github.event.after }}"
           fi
 
           scanner_args=(--base "$base_sha" --head "$head_sha")
 
-          if [ "$base_sha" = "0000000000000000000000000000000000000000" ]; then
+          if [ "${{ github.event_name }}" = "push" ]; then
             case "$GITHUB_REF" in
               refs/heads/*)
                 scanner_args+=(
