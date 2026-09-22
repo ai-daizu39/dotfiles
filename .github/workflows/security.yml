@@ -6,6 +6,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
   leak-check:
@@ -24,6 +25,7 @@ jobs:
           bash -n .githooks/pre-push install.sh
 
           test_repo="$(mktemp -d)"
+          trap 'rm -rf "$test_repo"' EXIT
           git -C "$test_repo" init -q
           git -C "$test_repo" config user.name "Leak Check Test"
           git -C "$test_repo" config user.email "test@example.com"
@@ -32,21 +34,85 @@ jobs:
           git -C "$test_repo" add test.conf
           git -C "$test_repo" commit -qm "clean"
           base_sha="$(git -C "$test_repo" rev-parse HEAD)"
+          head_ref="$(git -C "$test_repo" symbolic-ref HEAD)"
+          zero_sha="0000000000000000000000000000000000000000"
 
-          printf 'api_%s=%s\n' 'key' 'definitely-not-a-real-secret-123456' >> "$test_repo/test.conf"
+          expect_block() {
+            if (
+              cd "$test_repo"
+              python3 "$GITHUB_WORKSPACE/scripts/check-public-repo.py" "$@"
+            ); then
+              echo "ERROR: leak scanner accepted a blocked case." >&2
+              exit 1
+            fi
+          }
+
+          reset_test_repo() {
+            git -C "$test_repo" reset --hard -q "$base_sha"
+            git -C "$test_repo" clean -fdx -q
+          }
+
+          reset_test_repo
+          printf '{"token":"%s","api_%s":"%s"}\n' \
+            'placeholder' 'key' 'definitely-not-a-real-secret-123456' \
+            > "$test_repo/test.conf"
           git -C "$test_repo" add test.conf
-          git -C "$test_repo" commit -qm "add test secret"
-          head_sha="$(git -C "$test_repo" rev-parse HEAD)"
+          git -C "$test_repo" commit -qm "quoted credential"
+          quoted_sha="$(git -C "$test_repo" rev-parse HEAD)"
+          expect_block --base "$base_sha" --head "$quoted_sha"
 
-          if (
+          git -C "$test_repo" update-ref refs/remotes/origin/main "$base_sha"
+          expect_block \
+            --local-sha "$quoted_sha" \
+            --remote-sha "$zero_sha" \
+            --remote-name origin
+
+          git -C "$test_repo" update-ref refs/remotes/origin/new "$quoted_sha"
+          expect_block \
+            --base "$zero_sha" \
+            --head "$quoted_sha" \
+            --current-ref "$head_ref" \
+            --current-ref refs/remotes/origin/new
+
+          reset_test_repo
+          printf '%s=%s\n' 'password' 'prod-example-secret-2026' \
+            > "$test_repo/test.conf"
+          git -C "$test_repo" add test.conf
+          git -C "$test_repo" commit -qm "non-placeholder secret"
+          strict_placeholder_sha="$(git -C "$test_repo" rev-parse HEAD)"
+          expect_block --base "$base_sha" --head "$strict_placeholder_sha"
+
+          reset_test_repo
+          printf '%s=%s\n' 'password' '$2b$12$abcdefghijklmnopqrstuv1234567890' \
+            > "$test_repo/test.conf"
+          git -C "$test_repo" add test.conf
+          git -C "$test_repo" commit -qm "bcrypt-like secret"
+          bcrypt_sha="$(git -C "$test_repo" rev-parse HEAD)"
+          expect_block --base "$base_sha" --head "$bcrypt_sha"
+
+          reset_test_repo
+          mkdir -p "$test_repo/scripts"
+          printf 'contact=%s@%s\n' 'person' 'private.test' \
+            > "$test_repo/scripts/check-public-repo.py"
+          git -C "$test_repo" add scripts/check-public-repo.py
+          git -C "$test_repo" commit -qm "scanner self path"
+          self_path_sha="$(git -C "$test_repo" rev-parse HEAD)"
+          expect_block --base "$base_sha" --head "$self_path_sha"
+
+          reset_test_repo
+          printf 'legacy=true\n' > "$test_repo/.env"
+          git -C "$test_repo" add .env
+          git -C "$test_repo" commit -qm "legacy sensitive filename"
+          legacy_sha="$(git -C "$test_repo" rev-parse HEAD)"
+          git -C "$test_repo" rm -q .env
+          git -C "$test_repo" commit -qm "remove legacy sensitive filename"
+          deletion_sha="$(git -C "$test_repo" rev-parse HEAD)"
+          (
             cd "$test_repo"
             python3 "$GITHUB_WORKSPACE/scripts/check-public-repo.py" \
-              --base "$base_sha" \
-              --head "$head_sha"
-          ); then
-            echo "ERROR: leak scanner self-test did not block a credential." >&2
-            exit 1
-          fi
+              --base "$legacy_sha" \
+              --head "$deletion_sha"
+          )
 
       - name: Check personal and local data
         shell: bash
@@ -59,9 +125,25 @@ jobs:
             head_sha="${{ github.sha }}"
           fi
 
-          python3 scripts/check-public-repo.py \
-            --base "$base_sha" \
-            --head "$head_sha"
+          scanner_args=(--base "$base_sha" --head "$head_sha")
+
+          if [ "$base_sha" = "0000000000000000000000000000000000000000" ]; then
+            case "$GITHUB_REF" in
+              refs/heads/*)
+                scanner_args+=(
+                  --current-ref "$GITHUB_REF"
+                  --current-ref "refs/remotes/origin/${GITHUB_REF#refs/heads/}"
+                )
+                ;;
+              refs/tags/*)
+                scanner_args+=(--current-ref "$GITHUB_REF")
+                ;;
+            esac
+          fi
+
+          python3 scripts/check-public-repo.py "${scanner_args[@]}"
 
       - name: Scan secrets with Gitleaks
         uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
