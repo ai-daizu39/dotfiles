@@ -83,6 +83,14 @@ jobs:
           expect_block --base "$base_sha" --head "$strict_placeholder_sha"
 
           reset_test_repo
+          printf '%s=%s\n' 'password' '$PASSWORD-suffix-secret' \
+            > "$test_repo/test.conf"
+          git -C "$test_repo" add test.conf
+          git -C "$test_repo" commit -qm "composed template secret"
+          composed_template_sha="$(git -C "$test_repo" rev-parse HEAD)"
+          expect_block --base "$base_sha" --head "$composed_template_sha"
+
+          reset_test_repo
           printf '%s=%s\n' 'password' '$2b$12$abcdefghijklmnopqrstuv1234567890' \
             > "$test_repo/test.conf"
           git -C "$test_repo" add test.conf
