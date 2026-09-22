@@ -203,6 +203,29 @@ jobs:
           expect_block --base "$merge_left_sha" --head "$merge_sensitive_sha"
 
           reset_test_repo
+          git -C "$test_repo" switch -q -C safe-merge-left "$base_sha"
+          printf 'legacy=true\n' > "$test_repo/.env"
+          git -C "$test_repo" add .env
+          git -C "$test_repo" commit -qm "legacy sensitive merge parent"
+          safe_merge_left_sha="$(git -C "$test_repo" rev-parse HEAD)"
+
+          git -C "$test_repo" switch -q -C safe-merge-right "$base_sha"
+          printf 'safe=true\n' > "$test_repo/safe-merge.conf"
+          git -C "$test_repo" add safe-merge.conf
+          git -C "$test_repo" commit -qm "safe merge right parent"
+
+          git -C "$test_repo" switch -q safe-merge-left
+          git -C "$test_repo" merge -q --no-ff \
+            -m "merge unrelated safe branch" safe-merge-right
+          safe_merge_sha="$(git -C "$test_repo" rev-parse HEAD)"
+          (
+            cd "$test_repo"
+            python3 "$GITHUB_WORKSPACE/scripts/check-public-repo.py" \
+              --base "$safe_merge_left_sha" \
+              --head "$safe_merge_sha"
+          )
+
+          reset_test_repo
           printf 'legacy=true\n' > "$test_repo/.env"
           git -C "$test_repo" add .env
           git -C "$test_repo" commit -qm "legacy sensitive filename"
