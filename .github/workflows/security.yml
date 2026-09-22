@@ -76,6 +76,25 @@ jobs:
             exit 1
           fi
 
+          fake_bin="$(mktemp -d)"
+          cat > "$fake_bin/gitleaks" <<'EOF'
+          #!/usr/bin/env bash
+          if [ "${1:-}" = "git" ] && [ "${2:-}" = "--help" ]; then
+            exit 0
+          fi
+          exit 99
+          EOF
+          chmod +x "$fake_bin/gitleaks"
+          (
+            cd "$test_repo"
+            printf 'refs/heads/test %s refs/heads/test %s\n' \
+              "$zero_sha" "$quoted_sha" |
+              PATH="$fake_bin:$PATH" \
+              "$GITHUB_WORKSPACE/.githooks/pre-push" \
+                origin https://example.invalid/repo.git
+          )
+          rm -rf "$fake_bin"
+
           git -C "$test_repo" update-ref refs/remotes/origin/main "$base_sha"
           expect_block \
             --local-sha "$quoted_sha" \
