@@ -24,6 +24,7 @@ done
 
 if [ "$checked" -eq 0 ]; then
   printf 'No commits need public-repository inspection.\n'
+  exit 0
 fi
 
 if command -v gitleaks >/dev/null 2>&1 && gitleaks git --help >/dev/null 2>&1; then
