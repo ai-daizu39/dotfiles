@@ -99,7 +99,7 @@ WSL2 では Windows 版 Chrome の標準的なパスが存在する場合、自�
 
 標準では以下を検査します。
 
-- 秘密鍵ファイル、`.env`、秘密鍵・証明書系のファイル名
+- 秘密鍵ファイル、`.env`、秘密鍵・証明書系のファイル名（`.env.example` / `.env.sample` / `.env.template` / `.env.dist` はテンプレート用途として許可し、内容は通常どおり検査）
 - 秘密鍵の本文
 - GitHub / AWS / Slack の代表的な認証情報
 - `password`、`token`、`api_key`、`client_secret` 等への値の直接代入
