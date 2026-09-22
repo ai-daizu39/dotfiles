@@ -135,6 +135,7 @@ def changed_paths(commit: str) -> list[str]:
         "--root",
         "--no-commit-id",
         "--name-only",
+        "--no-renames",
         "--diff-filter=ACMRTUXB",
         "-r",
         commit,
