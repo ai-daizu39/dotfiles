@@ -13,8 +13,7 @@ while read -r local_ref local_sha remote_ref remote_sha; do
 
   printf 'Checking outgoing commits for %s -> %s...\n' "$local_ref" "$remote_ref"
   scanner_args=(--local-sha "$local_sha" --remote-sha "$remote_sha")
-  if [ "$remote_sha" = "0000000000000000000000000000000000000000" ] \
-    && [ -n "$remote_name" ] \
+  if [ -n "$remote_name" ] \
     && git remote get-url "$remote_name" >/dev/null 2>&1; then
     scanner_args+=(--remote-name "$remote_name")
   fi
