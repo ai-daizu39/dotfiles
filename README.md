@@ -110,26 +110,8 @@ WSL2 では Windows 版 Chrome の標準的なパスが存在する場合、自�
 会社名、社内ドメイン、社内ホスト名など、追加で公開禁止にしたい文字列はリポジトリへ値を保存せず環境変数で指定できます。
 
 ```bash
-export PUBLIC_REPO_BLOCKLIST=
-- Bash の構文
-- ShellCheck
-- tmux 設定の読み込み
-- Vim 設定の起動
-- Neovim 設定の起動
-- minpac の `PackInit()` によるプラグイン定義の読み込み
-- 設定ファイルから抽出した固定 tag / branch がリモートに存在すること
-- minpac 本体が `v3.0.0` で導入されること
-
-ローカルでも最低限の構文確認ができます。
-
-```bash
-bash -n _bashrc _bash_env install.sh
-tmux -L dotfiles-test -f "$PWD/_tmux.conf" new-session -d -s dotfiles-test
-tmux -L dotfiles-test kill-server
-vim -Nu "$PWD/_vimrc" -n -es +'qa!'
-nvim --headless -u "$PWD/nvim/init.vim" +qa
-```
-internal.example.jp\nsecret-hostname'
+export PUBLIC_REPO_BLOCKLIST='internal.example.jp
+secret-hostname'
 git push
 ```
 
