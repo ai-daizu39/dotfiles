@@ -136,6 +136,25 @@ jobs:
           expect_block --base "$base_sha" --head "$self_path_sha"
 
           reset_test_repo
+          printf '%s=%s\n' 'password' '${PASSWORD}' > "$test_repo/.env.example"
+          git -C "$test_repo" add .env.example
+          git -C "$test_repo" commit -qm "public env template"
+          env_example_sha="$(git -C "$test_repo" rev-parse HEAD)"
+          (
+            cd "$test_repo"
+            python3 "$GITHUB_WORKSPACE/scripts/check-public-repo.py" \
+              --base "$base_sha" \
+              --head "$env_example_sha"
+          )
+
+          reset_test_repo
+          printf 'safe=true\n' > "$test_repo/.env.production"
+          git -C "$test_repo" add .env.production
+          git -C "$test_repo" commit -qm "sensitive env filename"
+          env_production_sha="$(git -C "$test_repo" rev-parse HEAD)"
+          expect_block --base "$base_sha" --head "$env_production_sha"
+
+          reset_test_repo
           printf 'legacy=true\n' > "$test_repo/.env"
           git -C "$test_repo" add .env
           git -C "$test_repo" commit -qm "legacy sensitive filename"
