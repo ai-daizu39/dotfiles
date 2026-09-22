@@ -132,36 +132,48 @@ def outgoing_commits(
     return [line for line in output.splitlines() if line]
 
 
+def is_merge_commit(commit: str) -> bool:
+    parents = git("rev-list", "--parents", "-n", "1", commit).split()
+    return len(parents) > 2
+
+
 def changed_paths(commit: str) -> list[str]:
-    output = git(
+    args = [
         "diff-tree",
         "--root",
-        "-m",
         "--no-commit-id",
         "--name-only",
         "--no-renames",
         "--diff-filter=ACMRTUXB",
         "-r",
-        commit,
-    )
+    ]
+    if is_merge_commit(commit):
+        args.append("--cc")
+    args.append(commit)
+
+    output = git(*args)
     return [line for line in output.splitlines() if line]
 
 
 def added_lines(commit: str):
-    patch = git(
-        "show",
-        "-m",
-        "--format=",
-        "--unified=0",
-        "--no-ext-diff",
-        "--text",
-        commit,
+    args = ["show"]
+    if is_merge_commit(commit):
+        args.append("--cc")
+    args.extend(
+        [
+            "--format=",
+            "--unified=0",
+            "--no-ext-diff",
+            "--text",
+            commit,
+        ]
     )
+    patch = git(*args)
     path = ""
     in_hunk = False
 
     for line in patch.splitlines():
-        if line.startswith("diff --git "):
+        if line.startswith("diff --"):
             path = ""
             in_hunk = False
             continue
