@@ -136,6 +136,7 @@ def changed_paths(commit: str) -> list[str]:
     output = git(
         "diff-tree",
         "--root",
+        "-m",
         "--no-commit-id",
         "--name-only",
         "--no-renames",
@@ -149,6 +150,7 @@ def changed_paths(commit: str) -> list[str]:
 def added_lines(commit: str):
     patch = git(
         "show",
+        "-m",
         "--format=",
         "--unified=0",
         "--no-ext-diff",
@@ -156,11 +158,20 @@ def added_lines(commit: str):
         commit,
     )
     path = ""
+    in_hunk = False
+
     for line in patch.splitlines():
-        if line.startswith("+++ b/"):
+        if line.startswith("diff --git "):
+            path = ""
+            in_hunk = False
+            continue
+        if line.startswith("+++ b/") and not in_hunk:
             path = line[6:]
             continue
-        if line.startswith("+") and not line.startswith("+++"):
+        if line.startswith("@@"):
+            in_hunk = True
+            continue
+        if in_hunk and line.startswith("+"):
             yield path, line[1:]
 
 
