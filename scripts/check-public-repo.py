@@ -40,7 +40,15 @@ SAFE_SECRET_VALUES = {"changeme", "change-me", "dummy", "example", "placeholder"
 
 
 def git(*args: str) -> str:
-    result = subprocess.run(["git", *args], check=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    result = subprocess.run(
+        ["git", *args],
+        check=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
     return result.stdout
 
 
