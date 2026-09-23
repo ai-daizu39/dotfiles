@@ -52,20 +52,13 @@ def git(*args: str) -> str:
     return result.stdout
 
 
-def outgoing_commits(base: str, head: str, remote_name: str | None = None, current_refs: list[str] | None = None) -> list[str]:
+def outgoing_commits(base: str, head: str, remote_name: str | None = None) -> list[str]:
     if head == ZERO_SHA:
         return []
     args = ["rev-list", "--reverse", head]
     if base and base != ZERO_SHA:
         args.append(f"^{base}")
-    if current_refs:
-        current = set(current_refs)
-        refs = git("for-each-ref", "--format=%(refname)").splitlines()
-        other_refs = [ref for ref in refs if ref and ref not in current]
-        if other_refs:
-            args.extend(["--not", *other_refs])
-        output = git(*args)
-    elif remote_name:
+    if remote_name:
         output = git(*args, "--not", f"--remotes={remote_name}")
     else:
         output = git(*args)
@@ -81,7 +74,6 @@ def changed_paths(commit: str) -> list[str]:
     if is_merge_commit(commit):
         args.append("--cc")
     args.append(commit)
-    # -z disables core.quotePath quoting and preserves Unicode path names.
     return [path for path in git(*args).split("\0") if path]
 
 
@@ -89,8 +81,6 @@ def added_lines(commit: str):
     args = ["show"]
     if is_merge_commit(commit):
         args.append("--cc")
-    # Do not force binary blobs through the text decoder. Git will emit a
-    # textual "Binary files ... differ" marker instead of raw binary bytes.
     args.extend(["--format=", "--unified=0", "--no-ext-diff", "--no-textconv", commit])
     patch = git(*args)
     path = ""
@@ -160,13 +150,12 @@ def main() -> int:
     parser.add_argument("--local-sha")
     parser.add_argument("--remote-sha", default=ZERO_SHA)
     parser.add_argument("--remote-name")
-    parser.add_argument("--current-ref", action="append", default=[])
     args = parser.parse_args()
     head = args.head or args.local_sha
     base = args.base if args.head else args.remote_sha
     if not head:
         parser.error("--head or --local-sha is required")
-    commits = outgoing_commits(base, head, remote_name=args.remote_name, current_refs=args.current_ref)
+    commits = outgoing_commits(base, head, remote_name=args.remote_name)
     if not commits:
         print("public-repo check: no outgoing commits")
         return 0
