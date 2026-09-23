@@ -1,0 +1,191 @@
+name: security
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  leak-check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Validate security tooling
+        shell: bash
+        run: |
+          python3 -m py_compile scripts/check-public-repo.py
+          bash -n .githooks/pre-push install.sh
+
+          test_repo="$(mktemp -d)"
+          trap 'rm -rf "$test_repo"' EXIT
+          git -C "$test_repo" init -q
+          git -C "$test_repo" config user.name "Leak Check Test"
+          git -C "$test_repo" config user.email "test@example.com"
+
+          printf 'safe=true\n' > "$test_repo/test.conf"
+          git -C "$test_repo" add test.conf
+          git -C "$test_repo" commit -qm "clean"
+          base_sha="$(git -C "$test_repo" rev-parse HEAD)"
+          head_ref="$(git -C "$test_repo" symbolic-ref HEAD)"
+          zero_sha="0000000000000000000000000000000000000000"
+
+          expect_block() {
+            if ( cd "$test_repo"; python3 "$GITHUB_WORKSPACE/scripts/check-public-repo.py" "$@" ); then
+              echo "ERROR: leak scanner accepted a blocked case." >&2
+              exit 1
+            fi
+          }
+          reset_test_repo() {
+            git -C "$test_repo" reset --hard -q "$base_sha"
+            git -C "$test_repo" clean -fdx -q
+          }
+
+          reset_test_repo
+          printf '{"token":"%s","api_%s":"%s"}\n' 'placeholder' 'key' 'definitely-not-a-real-secret-123456' > "$test_repo/test.conf"
+          git -C "$test_repo" add test.conf && git -C "$test_repo" commit -qm "quoted credential"
+          quoted_sha="$(git -C "$test_repo" rev-parse HEAD)"
+          expect_block --base "$base_sha" --head "$quoted_sha"
+
+          mkdir -p "$test_repo/scripts"
+          cp "$GITHUB_WORKSPACE/scripts/check-public-repo.py" "$test_repo/scripts/check-public-repo.py"
+          git -C "$test_repo" remote add origin https://example.invalid/repo.git
+          if ( cd "$test_repo"; printf 'refs/heads/test %s refs/heads/test %s\n' "$quoted_sha" "$zero_sha" | "$GITHUB_WORKSPACE/.githooks/pre-push" origin https://example.invalid/repo.git ); then
+            echo "ERROR: pre-push hook accepted a blocked commit." >&2; exit 1
+          fi
+
+          fake_bin="$(mktemp -d)"
+          cat > "$fake_bin/gitleaks" <<'EOF'
+          #!/usr/bin/env bash
+          if [ "${1:-}" = "git" ] && [ "${2:-}" = "--help" ]; then exit 0; fi
+          exit 99
+          EOF
+          chmod +x "$fake_bin/gitleaks"
+          ( cd "$test_repo"; printf 'refs/heads/test %s refs/heads/test %s\n' "$zero_sha" "$quoted_sha" | PATH="$fake_bin:$PATH" "$GITHUB_WORKSPACE/.githooks/pre-push" origin https://example.invalid/repo.git )
+          rm -rf "$fake_bin"
+
+          git -C "$test_repo" update-ref refs/remotes/origin/main "$base_sha"
+          expect_block --local-sha "$quoted_sha" --remote-sha "$zero_sha" --remote-name origin
+          git -C "$test_repo" update-ref refs/remotes/origin/new "$quoted_sha"
+          expect_block --base "$zero_sha" --head "$quoted_sha" --current-ref "$head_ref" --current-ref refs/remotes/origin/new
+
+          reset_test_repo
+          printf '%s=%s\n' password prod-example-secret-2026 > "$test_repo/test.conf"
+          git -C "$test_repo" add test.conf && git -C "$test_repo" commit -qm "non-placeholder secret"
+          expect_block --base "$base_sha" --head "$(git -C "$test_repo" rev-parse HEAD)"
+
+          reset_test_repo
+          printf '%s%s=%s\n' '+++' password definitely-not-a-real-secret-123456 > "$test_repo/test.conf"
+          git -C "$test_repo" add test.conf && git -C "$test_repo" commit -qm "plus-prefixed secret line"
+          expect_block --base "$base_sha" --head "$(git -C "$test_repo" rev-parse HEAD)"
+
+          reset_test_repo
+          printf '%s=%s\n' password '$PASSWORD-suffix-secret' > "$test_repo/test.conf"
+          git -C "$test_repo" add test.conf && git -C "$test_repo" commit -qm "composed template secret"
+          expect_block --base "$base_sha" --head "$(git -C "$test_repo" rev-parse HEAD)"
+
+          reset_test_repo
+          printf '%s=%s\n' password '${PASSWORD}' > "$test_repo/test.conf"
+          git -C "$test_repo" add test.conf && git -C "$test_repo" commit -qm "exact template placeholder"
+          ( cd "$test_repo"; python3 "$GITHUB_WORKSPACE/scripts/check-public-repo.py" --base "$base_sha" --head "$(git rev-parse HEAD)" )
+
+          reset_test_repo
+          printf '%s=%s\n' password '$2b$12$abcdefghijklmnopqrstuv1234567890' > "$test_repo/test.conf"
+          git -C "$test_repo" add test.conf && git -C "$test_repo" commit -qm "bcrypt-like secret"
+          expect_block --base "$base_sha" --head "$(git -C "$test_repo" rev-parse HEAD)"
+
+          reset_test_repo
+          mkdir -p "$test_repo/scripts"
+          printf 'contact=%s@%s\n' person private.test > "$test_repo/scripts/check-public-repo.py"
+          git -C "$test_repo" add scripts/check-public-repo.py && git -C "$test_repo" commit -qm "scanner self path"
+          expect_block --base "$base_sha" --head "$(git -C "$test_repo" rev-parse HEAD)"
+
+          reset_test_repo
+          printf '%s=%s\n' password '${PASSWORD}' > "$test_repo/.env.example"
+          git -C "$test_repo" add .env.example && git -C "$test_repo" commit -qm "public env template"
+          ( cd "$test_repo"; python3 "$GITHUB_WORKSPACE/scripts/check-public-repo.py" --base "$base_sha" --head "$(git rev-parse HEAD)" )
+
+          reset_test_repo
+          printf 'safe=true\n' > "$test_repo/.env.production"
+          git -C "$test_repo" add .env.production && git -C "$test_repo" commit -qm "sensitive env filename"
+          expect_block --base "$base_sha" --head "$(git -C "$test_repo" rev-parse HEAD)"
+
+          reset_test_repo
+          mkdir -p "$test_repo/秘密"
+          printf 'safe=true\n' > "$test_repo/秘密/.env"
+          git -C "$test_repo" add '秘密/.env' && git -C "$test_repo" commit -qm "unicode sensitive filename"
+          expect_block --base "$base_sha" --head "$(git -C "$test_repo" rev-parse HEAD)"
+
+          reset_test_repo
+          printf '\211PNG\r\n\032\n\377\376\375\000binary-data\n' > "$test_repo/image.png"
+          git -C "$test_repo" add image.png && git -C "$test_repo" commit -qm "safe binary file"
+          ( cd "$test_repo"; python3 "$GITHUB_WORKSPACE/scripts/check-public-repo.py" --base "$base_sha" --head "$(git rev-parse HEAD)" )
+
+          reset_test_repo
+          git -C "$test_repo" switch -q -C merge-left "$base_sha"
+          printf 'left=true\n' > "$test_repo/left.conf"; git -C "$test_repo" add left.conf; git -C "$test_repo" commit -qm "merge left parent"
+          merge_left_sha="$(git -C "$test_repo" rev-parse HEAD)"
+          git -C "$test_repo" switch -q -C merge-right "$base_sha"
+          printf 'right=true\n' > "$test_repo/right.conf"; git -C "$test_repo" add right.conf; git -C "$test_repo" commit -qm "merge right parent"
+          git -C "$test_repo" switch -q merge-left; git -C "$test_repo" merge -q --no-ff --no-commit merge-right
+          printf 'safe=true\n' > "$test_repo/.env"; git -C "$test_repo" add .env; git -C "$test_repo" commit -qm "merge introduces sensitive filename"
+          expect_block --base "$merge_left_sha" --head "$(git -C "$test_repo" rev-parse HEAD)"
+
+          reset_test_repo
+          git -C "$test_repo" switch -q -C safe-merge-left "$base_sha"
+          printf 'legacy=true\n' > "$test_repo/.env"; git -C "$test_repo" add .env; git -C "$test_repo" commit -qm "legacy sensitive merge parent"
+          safe_merge_left_sha="$(git -C "$test_repo" rev-parse HEAD)"
+          git -C "$test_repo" switch -q -C safe-merge-right "$base_sha"
+          printf 'safe=true\n' > "$test_repo/safe-merge.conf"; git -C "$test_repo" add safe-merge.conf; git -C "$test_repo" commit -qm "safe merge right parent"
+          git -C "$test_repo" switch -q safe-merge-left; git -C "$test_repo" merge -q --no-ff -m "merge unrelated safe branch" safe-merge-right
+          ( cd "$test_repo"; python3 "$GITHUB_WORKSPACE/scripts/check-public-repo.py" --base "$safe_merge_left_sha" --head "$(git rev-parse HEAD)" )
+
+          reset_test_repo
+          git -C "$test_repo" switch -q -C published-topic "$base_sha"
+          printf 'already-public=true\n' > "$test_repo/.env"; git -C "$test_repo" add .env; git -C "$test_repo" commit -qm "already published sensitive topic"
+          git -C "$test_repo" update-ref refs/remotes/origin/topic "$(git -C "$test_repo" rev-parse HEAD)"
+          git -C "$test_repo" switch -q -C published-main "$base_sha"; git -C "$test_repo" merge -q --no-ff -m "merge already published topic" published-topic
+          ( cd "$test_repo"; python3 "$GITHUB_WORKSPACE/scripts/check-public-repo.py" --base "$base_sha" --head "$(git rev-parse HEAD)" --remote-name origin )
+
+          reset_test_repo
+          printf 'legacy=true\n' > "$test_repo/.env"; git -C "$test_repo" add .env; git -C "$test_repo" commit -qm "legacy sensitive filename"
+          legacy_sha="$(git -C "$test_repo" rev-parse HEAD)"; git -C "$test_repo" rm -q .env; git -C "$test_repo" commit -qm "remove legacy sensitive filename"
+          ( cd "$test_repo"; python3 "$GITHUB_WORKSPACE/scripts/check-public-repo.py" --base "$legacy_sha" --head "$(git rev-parse HEAD)" )
+
+          reset_test_repo
+          printf 'legacy=true\n' > "$test_repo/.env"; git -C "$test_repo" add .env; git -C "$test_repo" commit -qm "legacy rename source"
+          rename_base_sha="$(git -C "$test_repo" rev-parse HEAD)"; git -C "$test_repo" mv .env public.conf; git -C "$test_repo" commit -qm "rename legacy sensitive filename"
+          ( cd "$test_repo"; python3 "$GITHUB_WORKSPACE/scripts/check-public-repo.py" --base "$rename_base_sha" --head "$(git rev-parse HEAD)" )
+
+      - name: Check personal and local data
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base_sha="${{ github.event.pull_request.base.sha }}"
+            head_sha="${{ github.event.pull_request.head.sha }}"
+          else
+            base_sha="${{ github.event.before }}"
+            head_sha="${{ github.event.after }}"
+          fi
+          scanner_args=(--base "$base_sha" --head "$head_sha")
+          if [ "${{ github.event_name }}" = "push" ]; then
+            case "$GITHUB_REF" in
+              refs/heads/*) scanner_args+=(--current-ref "$GITHUB_REF" --current-ref "refs/remotes/origin/${GITHUB_REF#refs/heads/}") ;;
+              refs/tags/*) scanner_args+=(--current-ref "$GITHUB_REF") ;;
+            esac
+          fi
+          python3 scripts/check-public-repo.py "${scanner_args[@]}"
+
+      - name: Scan secrets with Gitleaks
+        if: github.event_name != 'push' || github.event.deleted != true
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_COMMENTS: "false"

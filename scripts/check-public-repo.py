@@ -1,0 +1,212 @@
+#!/usr/bin/env python3
+"""Check outgoing commits for secrets and personal/local environment data."""
+
+from __future__ import annotations
+
+import argparse
+import os
+import re
+import socket
+import subprocess
+import sys
+from pathlib import PurePosixPath
+
+ZERO_SHA = "0" * 40
+
+PRIVATE_FILE_PATTERNS = (
+    re.compile(r"(^|/)(?:id_rsa|id_dsa|id_ecdsa|id_ed25519)$", re.I),
+    re.compile(r"(^|/)\.env(?:\.(?!(?:example|sample|template|dist)$).+)?$", re.I),
+    re.compile(r"\.(?:key|pem|p12|pfx)$", re.I),
+    re.compile(r"(^|/)(?:credentials?|secrets?)\.(?:json|ya?ml|toml)$", re.I),
+)
+EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@([A-Z0-9.-]+\.[A-Z]{2,})\b", re.I)
+HOME_PATH_RE = re.compile(
+    r"(?:/home/(?!(?:user|example)(?![A-Za-z0-9._-]))[A-Za-z0-9._-]+"
+    r"|/Users/(?!(?:user|example)(?![A-Za-z0-9._-]))[A-Za-z0-9._-]+"
+    r"|[A-Za-z]:\\Users\\(?!(?:user|example)(?![A-Za-z0-9._-]))[^\\\s]+)"
+)
+RULES = (
+    ("private-key", re.compile(r"-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----")),
+    ("github-token", re.compile(r"\bgh[pousr]_[A-Za-z0-9]{20,}\b")),
+    ("aws-access-key", re.compile(r"\b(?:AKIA|ASIA)[A-Z0-9]{16}\b")),
+    ("slack-token", re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{20,}\b")),
+)
+GENERIC_SECRET_RE = re.compile(r'''(?ix)
+    ["']?\b(password|passwd|token|api[_-]?key|client[_-]?secret|access[_-]?key|secret)\b["']?\s*[:=]\s*
+    (?:"([^"\r\n]{8,})"|'([^'\r\n]{8,})'|((?:\$\{[A-Za-z_][A-Za-z0-9_]*\}|\$[A-Za-z_][A-Za-z0-9_]*|\{\{[^{}\r\n]+\}\}|<[A-Za-z0-9_.:-]+>)(?=$|[\s"'#,}\]])|[^\s"'#,}\]]{8,}))
+''')
+TEMPLATE_SECRET_RE = re.compile(r"^(?:\$\{[A-Za-z_][A-Za-z0-9_]*\}|\$[A-Za-z_][A-Za-z0-9_]*|\{\{[^{}\r\n]+\}\}|<[A-Za-z0-9_.:-]+>)$")
+SAFE_EMAIL_DOMAINS = {"example.com", "example.net", "example.org", "users.noreply.github.com"}
+SAFE_SECRET_VALUES = {"changeme", "change-me", "dummy", "example", "placeholder", "redacted", "xxxxxxxx"}
+
+
+def git_bytes(*args: str) -> bytes:
+    result = subprocess.run(["git", *args], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    return result.stdout
+
+
+def git(*args: str) -> str:
+    return git_bytes(*args).decode("utf-8", errors="replace")
+
+
+def git_object_exists(obj: str) -> bool:
+    result = subprocess.run(["git", "cat-file", "-e", f"{obj}^{{commit}}"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return result.returncode == 0
+
+
+def outgoing_commits(base: str, head: str, remote_name: str | None = None) -> list[str]:
+    if head == ZERO_SHA:
+        return []
+    args = ["rev-list", "--reverse", head]
+    if base and base != ZERO_SHA and git_object_exists(base):
+        args.append(f"^{base}")
+    output = git(*args, "--not", f"--remotes={remote_name}") if remote_name else git(*args)
+    return [line for line in output.splitlines() if line]
+
+
+def parent_count(commit: str) -> int:
+    return max(0, len(git("rev-list", "--parents", "-n", "1", commit).split()) - 1)
+
+
+def is_merge_commit(commit: str) -> bool:
+    return parent_count(commit) > 1
+
+
+def changed_paths(commit: str) -> list[str]:
+    args = ["diff-tree", "--root", "--no-commit-id", "--name-only", "-z", "--no-renames", "--diff-filter=ACMRTUXB", "-r"]
+    if is_merge_commit(commit):
+        args.append("--cc")
+    args.append(commit)
+    return [path for path in git(*args).split("\0") if path]
+
+
+def decoded_added_content(raw: bytes) -> list[str]:
+    """Return useful text interpretations of one added diff record."""
+    values = [raw.decode("utf-8", errors="replace")]
+    if b"\0" in raw:
+        # Git classifies UTF-16 and similar NUL-containing config files as
+        # binary. With --text the raw bytes remain available; try both UTF-16
+        # byte orders so credential-like text is not silently skipped.
+        for encoding in ("utf-16", "utf-16-le", "utf-16-be"):
+            try:
+                value = raw.decode(encoding)
+            except (UnicodeDecodeError, UnicodeError):
+                continue
+            if value not in values:
+                values.append(value)
+    return values
+
+
+def added_lines(commit: str):
+    parents = parent_count(commit)
+    prefix_width = parents if parents > 1 else 1
+    args = ["show"]
+    if parents > 1:
+        args.append("--cc")
+    args.extend(["--format=", "--unified=0", "--no-ext-diff", "--no-textconv", "--text", commit])
+    patch = git_bytes(*args)
+    path = ""
+    in_hunk = False
+    for raw_line in patch.split(b"\n"):
+        if raw_line.startswith(b"diff --"):
+            path = ""
+            in_hunk = False
+            continue
+        if raw_line.startswith(b"+++ b/") and not in_hunk:
+            path = raw_line[6:].decode("utf-8", errors="replace")
+            continue
+        if raw_line.startswith(b"@@"):
+            in_hunk = True
+            continue
+        if in_hunk:
+            prefix = raw_line[:prefix_width]
+            if prefix == b"+" * prefix_width:
+                content = raw_line[prefix_width:]
+                for decoded in decoded_added_content(content):
+                    yield path, decoded
+
+
+def local_markers() -> list[tuple[str, str]]:
+    markers: list[tuple[str, str]] = []
+    home = os.path.expanduser("~")
+    if home and home not in {"/", "/root"}:
+        markers.append(("local-home", home))
+    user = os.environ.get("USER") or os.environ.get("USERNAME") or ""
+    if len(user) >= 5 and user.lower() not in {"runner", "ubuntu", "github"}:
+        markers.append(("local-username", user))
+    hostname = socket.gethostname().strip()
+    if len(hostname) >= 5 and hostname.lower() not in {"localhost"}:
+        markers.append(("local-hostname", hostname))
+    for value in os.environ.get("PUBLIC_REPO_BLOCKLIST", "").splitlines():
+        value = value.strip()
+        if value:
+            markers.append(("custom-blocklist", value))
+    return markers
+
+
+def secret_value_is_placeholder(value: str) -> bool:
+    normalized = value.strip("'\"").rstrip(",;")
+    return normalized.lower() in SAFE_SECRET_VALUES or bool(TEMPLATE_SECRET_RE.fullmatch(normalized))
+
+
+def scan_line(line: str, markers: list[tuple[str, str]]) -> set[str]:
+    findings: set[str] = set()
+    for name, regex in RULES:
+        if regex.search(line):
+            findings.add(name)
+    for generic in GENERIC_SECRET_RE.finditer(line):
+        value = next((group for group in generic.groups()[1:] if group is not None), "")
+        if value and not secret_value_is_placeholder(value):
+            findings.add("credential-assignment")
+    for match in EMAIL_RE.finditer(line):
+        if match.group(1).lower() not in SAFE_EMAIL_DOMAINS:
+            findings.add("email-address")
+    if HOME_PATH_RE.search(line):
+        findings.add("user-home-path")
+    for name, value in markers:
+        if value in line:
+            findings.add(name)
+    return findings
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--base", default=ZERO_SHA)
+    parser.add_argument("--head")
+    parser.add_argument("--local-sha")
+    parser.add_argument("--remote-sha", default=ZERO_SHA)
+    parser.add_argument("--remote-name")
+    parser.add_argument("--current-ref", action="append", default=[])
+    args = parser.parse_args()
+    head = args.head or args.local_sha
+    base = args.base if args.head else args.remote_sha
+    if not head:
+        parser.error("--head or --local-sha is required")
+    commits = outgoing_commits(base, head, remote_name=args.remote_name)
+    if not commits:
+        print("public-repo check: no outgoing commits")
+        return 0
+    markers = local_markers()
+    findings: set[tuple[str, str, str]] = set()
+    for commit in commits:
+        short = commit[:12]
+        for path in changed_paths(commit):
+            filename = PurePosixPath(path).as_posix()
+            if any(pattern.search(filename) for pattern in PRIVATE_FILE_PATTERNS):
+                findings.add((short, filename, "sensitive-filename"))
+        for path, line in added_lines(commit):
+            for kind in scan_line(line, markers):
+                findings.add((short, path or "(unknown)", kind))
+    if findings:
+        print("ERROR: potentially private or secret data found in outgoing commits.", file=sys.stderr)
+        print("Matched values are intentionally not printed.", file=sys.stderr)
+        for commit, path, kind in sorted(findings):
+            print(f"  {commit}  {path}  [{kind}]", file=sys.stderr)
+        print("Remove the data from every affected commit before pushing.", file=sys.stderr)
+        return 1
+    print(f"public-repo check: OK ({len(commits)} outgoing commit(s))")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
