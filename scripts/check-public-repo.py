@@ -41,9 +41,7 @@ SAFE_SECRET_VALUES = {"changeme", "change-me", "dummy", "example", "placeholder"
 
 
 def git_bytes(*args: str) -> bytes:
-    result = subprocess.run(
-        ["git", *args], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
-    )
+    result = subprocess.run(["git", *args], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     return result.stdout
 
 
@@ -52,11 +50,7 @@ def git(*args: str) -> str:
 
 
 def git_object_exists(obj: str) -> bool:
-    result = subprocess.run(
-        ["git", "cat-file", "-e", f"{obj}^{{commit}}"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
+    result = subprocess.run(["git", "cat-file", "-e", f"{obj}^{{commit}}"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     return result.returncode == 0
 
 
@@ -66,13 +60,6 @@ def outgoing_commits(base: str, head: str, remote_name: str | None = None) -> li
     args = ["rev-list", "--reverse", head]
     if base and base != ZERO_SHA and git_object_exists(base):
         args.append(f"^{base}")
-    # If the advertised/previous base is unavailable (for example after a
-    # force-push), conservatively scan all history reachable from head instead
-    # of failing before any content is inspected.
-    # Remote refs are safe exclusions only in pre-push, where they represent
-    # the destination state before this push. Post-push CI must not use refs as
-    # exclusions because another ref updated by the same push could hide the
-    # very commits being checked.
     output = git(*args, "--not", f"--remotes={remote_name}") if remote_name else git(*args)
     return [line for line in output.splitlines() if line]
 
@@ -93,33 +80,50 @@ def changed_paths(commit: str) -> list[str]:
     return [path for path in git(*args).split("\0") if path]
 
 
+def decoded_added_content(raw: bytes) -> list[str]:
+    """Return useful text interpretations of one added diff record."""
+    values = [raw.decode("utf-8", errors="replace")]
+    if b"\0" in raw:
+        # Git classifies UTF-16 and similar NUL-containing config files as
+        # binary. With --text the raw bytes remain available; try both UTF-16
+        # byte orders so credential-like text is not silently skipped.
+        for encoding in ("utf-16", "utf-16-le", "utf-16-be"):
+            try:
+                value = raw.decode(encoding)
+            except (UnicodeDecodeError, UnicodeError):
+                continue
+            if value not in values:
+                values.append(value)
+    return values
+
+
 def added_lines(commit: str):
     parents = parent_count(commit)
     prefix_width = parents if parents > 1 else 1
     args = ["show"]
     if parents > 1:
         args.append("--cc")
-    args.extend(["--format=", "--unified=0", "--no-ext-diff", "--no-textconv", commit])
-    # Capture raw bytes so Python universal-newline translation cannot turn a
-    # lone CR inside file content into an LF patch-record separator.
-    patch = git_bytes(*args).decode("utf-8", errors="replace")
+    args.extend(["--format=", "--unified=0", "--no-ext-diff", "--no-textconv", "--text", commit])
+    patch = git_bytes(*args)
     path = ""
     in_hunk = False
-    for line in patch.split("\n"):
-        if line.startswith("diff --"):
+    for raw_line in patch.split(b"\n"):
+        if raw_line.startswith(b"diff --"):
             path = ""
             in_hunk = False
             continue
-        if line.startswith("+++ b/") and not in_hunk:
-            path = line[6:]
+        if raw_line.startswith(b"+++ b/") and not in_hunk:
+            path = raw_line[6:].decode("utf-8", errors="replace")
             continue
-        if line.startswith("@@"):
+        if raw_line.startswith(b"@@"):
             in_hunk = True
             continue
         if in_hunk:
-            prefix = line[:prefix_width]
-            if prefix == "+" * prefix_width:
-                yield path, line[prefix_width:]
+            prefix = raw_line[:prefix_width]
+            if prefix == b"+" * prefix_width:
+                content = raw_line[prefix_width:]
+                for decoded in decoded_added_content(content):
+                    yield path, decoded
 
 
 def local_markers() -> list[tuple[str, str]]:
