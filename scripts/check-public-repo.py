@@ -19,17 +19,14 @@ PRIVATE_FILE_PATTERNS = (
     re.compile(r"\.(?:key|pem|p12|pfx)$", re.I),
     re.compile(r"(^|/)(?:credentials?|secrets?)\.(?:json|ya?ml|toml)$", re.I),
 )
-
 EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@([A-Z0-9.-]+\.[A-Z]{2,})\b", re.I)
 HOME_PATH_RE = re.compile(r"(?:/home/(?!user\b|example\b)[A-Za-z0-9._-]+|/Users/(?!user\b|example\b)[A-Za-z0-9._-]+|[A-Za-z]:\\Users\\(?!user\b|example\b)[^\\\s]+)")
-
 RULES = (
     ("private-key", re.compile(r"-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----")),
     ("github-token", re.compile(r"\bgh[pousr]_[A-Za-z0-9]{20,}\b")),
     ("aws-access-key", re.compile(r"\b(?:AKIA|ASIA)[A-Z0-9]{16}\b")),
     ("slack-token", re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{20,}\b")),
 )
-
 GENERIC_SECRET_RE = re.compile(r'''(?ix)
     ["']?\b(password|passwd|token|api[_-]?key|client[_-]?secret|access[_-]?key|secret)\b["']?\s*[:=]\s*
     (?:"([^"\r\n]{8,})"|'([^'\r\n]{8,})'|((?:\$\{[A-Za-z_][A-Za-z0-9_]*\}|\$[A-Za-z_][A-Za-z0-9_]*|\{\{[^{}\r\n]+\}\}|<[A-Za-z0-9_.:-]+>)(?=$|[\s"'#,}\]])|[^\s"'#,}\]]{8,}))
@@ -40,15 +37,7 @@ SAFE_SECRET_VALUES = {"changeme", "change-me", "dummy", "example", "placeholder"
 
 
 def git(*args: str) -> str:
-    result = subprocess.run(
-        ["git", *args],
-        check=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
+    result = subprocess.run(["git", *args], check=True, text=True, encoding="utf-8", errors="replace", stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     return result.stdout
 
 
@@ -58,10 +47,11 @@ def outgoing_commits(base: str, head: str, remote_name: str | None = None) -> li
     args = ["rev-list", "--reverse", head]
     if base and base != ZERO_SHA:
         args.append(f"^{base}")
-    if remote_name:
-        output = git(*args, "--not", f"--remotes={remote_name}")
-    else:
-        output = git(*args)
+    # Remote refs are safe exclusions only in pre-push, where they represent
+    # the destination state before this push. Post-push CI must not use refs as
+    # exclusions because another ref updated by the same push could hide the
+    # very commits being checked.
+    output = git(*args, "--not", f"--remotes={remote_name}") if remote_name else git(*args)
     return [line for line in output.splitlines() if line]
 
 
@@ -150,6 +140,9 @@ def main() -> int:
     parser.add_argument("--local-sha")
     parser.add_argument("--remote-sha", default=ZERO_SHA)
     parser.add_argument("--remote-name")
+    # Compatibility with existing workflow invocations. Post-push refs are
+    # deliberately not exclusions; see outgoing_commits().
+    parser.add_argument("--current-ref", action="append", default=[])
     args = parser.parse_args()
     head = args.head or args.local_sha
     base = args.base if args.head else args.remote_sha
