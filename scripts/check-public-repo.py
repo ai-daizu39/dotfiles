@@ -40,17 +40,35 @@ SAFE_EMAIL_DOMAINS = {"example.com", "example.net", "example.org", "users.norepl
 SAFE_SECRET_VALUES = {"changeme", "change-me", "dummy", "example", "placeholder", "redacted", "xxxxxxxx"}
 
 
-def git(*args: str) -> str:
-    result = subprocess.run(["git", *args], check=True, text=True, encoding="utf-8", errors="replace", stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+def git_bytes(*args: str) -> bytes:
+    result = subprocess.run(
+        ["git", *args], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+    )
     return result.stdout
+
+
+def git(*args: str) -> str:
+    return git_bytes(*args).decode("utf-8", errors="replace")
+
+
+def git_object_exists(obj: str) -> bool:
+    result = subprocess.run(
+        ["git", "cat-file", "-e", f"{obj}^{{commit}}"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    return result.returncode == 0
 
 
 def outgoing_commits(base: str, head: str, remote_name: str | None = None) -> list[str]:
     if head == ZERO_SHA:
         return []
     args = ["rev-list", "--reverse", head]
-    if base and base != ZERO_SHA:
+    if base and base != ZERO_SHA and git_object_exists(base):
         args.append(f"^{base}")
+    # If the advertised/previous base is unavailable (for example after a
+    # force-push), conservatively scan all history reachable from head instead
+    # of failing before any content is inspected.
     # Remote refs are safe exclusions only in pre-push, where they represent
     # the destination state before this push. Post-push CI must not use refs as
     # exclusions because another ref updated by the same push could hide the
@@ -82,11 +100,11 @@ def added_lines(commit: str):
     if parents > 1:
         args.append("--cc")
     args.extend(["--format=", "--unified=0", "--no-ext-diff", "--no-textconv", commit])
-    patch = git(*args)
+    # Capture raw bytes so Python universal-newline translation cannot turn a
+    # lone CR inside file content into an LF patch-record separator.
+    patch = git_bytes(*args).decode("utf-8", errors="replace")
     path = ""
     in_hunk = False
-    # Git patch records are LF-delimited. Do not use splitlines(): it also
-    # splits embedded CR bytes, which can hide later content in one added line.
     for line in patch.split("\n"):
         if line.startswith("diff --"):
             path = ""
@@ -154,8 +172,6 @@ def main() -> int:
     parser.add_argument("--local-sha")
     parser.add_argument("--remote-sha", default=ZERO_SHA)
     parser.add_argument("--remote-name")
-    # Compatibility with existing workflow invocations. Post-push refs are
-    # deliberately not exclusions; see outgoing_commits().
     parser.add_argument("--current-ref", action="append", default=[])
     args = parser.parse_args()
     head = args.head or args.local_sha
