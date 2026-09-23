@@ -20,7 +20,11 @@ PRIVATE_FILE_PATTERNS = (
     re.compile(r"(^|/)(?:credentials?|secrets?)\.(?:json|ya?ml|toml)$", re.I),
 )
 EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@([A-Z0-9.-]+\.[A-Z]{2,})\b", re.I)
-HOME_PATH_RE = re.compile(r"(?:/home/(?!user\b|example\b)[A-Za-z0-9._-]+|/Users/(?!user\b|example\b)[A-Za-z0-9._-]+|[A-Za-z]:\\Users\\(?!user\b|example\b)[^\\\s]+)")
+HOME_PATH_RE = re.compile(
+    r"(?:/home/(?!user(?:/|$)|example(?:/|$))[A-Za-z0-9._-]+"
+    r"|/Users/(?!user(?:/|$)|example(?:/|$))[A-Za-z0-9._-]+"
+    r"|[A-Za-z]:\\Users\\(?!user(?:\\|$)|example(?:\\|$))[^\\\s]+)"
+)
 RULES = (
     ("private-key", re.compile(r"-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----")),
     ("github-token", re.compile(r"\bgh[pousr]_[A-Za-z0-9]{20,}\b")),
@@ -55,8 +59,12 @@ def outgoing_commits(base: str, head: str, remote_name: str | None = None) -> li
     return [line for line in output.splitlines() if line]
 
 
+def parent_count(commit: str) -> int:
+    return max(0, len(git("rev-list", "--parents", "-n", "1", commit).split()) - 1)
+
+
 def is_merge_commit(commit: str) -> bool:
-    return len(git("rev-list", "--parents", "-n", "1", commit).split()) > 2
+    return parent_count(commit) > 1
 
 
 def changed_paths(commit: str) -> list[str]:
@@ -68,8 +76,10 @@ def changed_paths(commit: str) -> list[str]:
 
 
 def added_lines(commit: str):
+    parents = parent_count(commit)
+    prefix_width = parents if parents > 1 else 1
     args = ["show"]
-    if is_merge_commit(commit):
+    if parents > 1:
         args.append("--cc")
     args.extend(["--format=", "--unified=0", "--no-ext-diff", "--no-textconv", commit])
     patch = git(*args)
@@ -86,8 +96,10 @@ def added_lines(commit: str):
         if line.startswith("@@"):
             in_hunk = True
             continue
-        if in_hunk and line.startswith("+"):
-            yield path, line[1:]
+        if in_hunk:
+            prefix = line[:prefix_width]
+            if prefix == "+" * prefix_width:
+                yield path, line[prefix_width:]
 
 
 def local_markers() -> list[tuple[str, str]]:
