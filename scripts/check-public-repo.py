@@ -21,9 +21,9 @@ PRIVATE_FILE_PATTERNS = (
 )
 EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@([A-Z0-9.-]+\.[A-Z]{2,})\b", re.I)
 HOME_PATH_RE = re.compile(
-    r"(?:/home/(?!user(?:/|$)|example(?:/|$))[A-Za-z0-9._-]+"
-    r"|/Users/(?!user(?:/|$)|example(?:/|$))[A-Za-z0-9._-]+"
-    r"|[A-Za-z]:\\Users\\(?!user(?:\\|$)|example(?:\\|$))[^\\\s]+)"
+    r"(?:/home/(?!(?:user|example)(?![A-Za-z0-9._-]))[A-Za-z0-9._-]+"
+    r"|/Users/(?!(?:user|example)(?![A-Za-z0-9._-]))[A-Za-z0-9._-]+"
+    r"|[A-Za-z]:\\Users\\(?!(?:user|example)(?![A-Za-z0-9._-]))[^\\\s]+)"
 )
 RULES = (
     ("private-key", re.compile(r"-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----")),
@@ -85,7 +85,9 @@ def added_lines(commit: str):
     patch = git(*args)
     path = ""
     in_hunk = False
-    for line in patch.splitlines():
+    # Git patch records are LF-delimited. Do not use splitlines(): it also
+    # splits embedded CR bytes, which can hide later content in one added line.
+    for line in patch.split("\n"):
         if line.startswith("diff --"):
             path = ""
             in_hunk = False
