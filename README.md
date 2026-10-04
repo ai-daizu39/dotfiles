@@ -16,6 +16,8 @@ Bash、tmux、Vim、Neovim の個人設定を管理するリポジトリです�
 | `_vimrc` | `~/.vimrc` | Vim |
 | `_vimrc_min` | `~/.vimrc` | 最小構成のVim設定（任意） |
 | `nvim/` | `~/.config/nvim/` | Neovim |
+| `.githooks/pre-push` | Git の pre-push hook | 公開前の漏えいチェック |
+| `scripts/check-public-repo.py` | リポジトリ内 | 個人情報・秘密情報の差分検査 |
 
 ## インストール
 
@@ -44,6 +46,12 @@ minpac の導入を行わない場合:
 
 ```bash
 bash install.sh --skip-minpac
+```
+
+通常は `install.sh` 実行時に、このリポジトリだけの `core.hooksPath` を `.githooks` に設定します。Git hook を設定しない場合:
+
+```bash
+bash install.sh --skip-git-hooks
 ```
 
 ## Vim / Neovim プラグイン
@@ -84,6 +92,32 @@ WSL2 では Windows 版 Chrome の標準的なパスが存在する場合、自�
 - Bash が対話シェル
 
 これにより、SSH の非対話コマンド、scp、rsync、自動処理などを tmux が横取りしないようにしています。
+
+## 公開リポジトリ向け漏えい防止
+
+`git push` の直前に `.githooks/pre-push` が、これから送信される各コミットの追加内容を検査します。現在のファイルだけではなく途中のコミットも検査するため、一度コミットした秘密情報を次のコミットで削除した場合も検出対象です。
+
+標準では以下を検査します。
+
+- 秘密鍵ファイル、`.env`、秘密鍵・証明書系のファイル名（`.env.example` / `.env.sample` / `.env.template` / `.env.dist` はテンプレート用途として許可し、内容は通常どおり検査）
+- 秘密鍵の本文
+- GitHub / AWS / Slack の代表的な認証情報
+- `password`、`token`、`api_key`、`client_secret` 等への値の直接代入
+- 実在するメールアドレス
+- `/home/<user>`、`/Users/<user>`、`C:\\Users\\<user>` のようなユーザー固有パス
+- 実行環境のホームディレクトリ、ユーザー名、ホスト名
+
+会社名、社内ドメイン、社内ホスト名など、追加で公開禁止にしたい文字列はリポジトリへ値を保存せず環境変数で指定できます。
+
+```bash
+export PUBLIC_REPO_BLOCKLIST='internal.example.jp
+secret-hostname'
+git push
+```
+
+Gitleaks がローカルにインストールされている場合は pre-push で追加スキャンします。未導入でも独自チェックは実行されます。GitHub 側でも `.github/workflows/security.yml` で独自チェックと `gitleaks/gitleaks-action@v3` を再実行します。
+
+検出した秘密値そのものはログへ出力せず、コミット、ファイル、検出種別のみを表示します。
 
 ## 検証
 
