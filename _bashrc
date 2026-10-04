@@ -63,9 +63,9 @@ fi
 
 if [ "${color_prompt:-}" = yes ]; then
   if type __git_ps1 >/dev/null 2>&1; then
-    PS1='${debian_chroot:+($debian_chroot)}\[\033[01;92m\]\u@\h\[\033[00m\]:\[\033[01;96m\]\w\[\033[00m\]$(__git_ps1)\$ '
+    PS1='${debian_chroot:+($debian_chroot)}\[\033[38;5;83m\]\u@\h\[\033[00m\]:\[\033[38;5;81m\]\w\[\033[00m\]$(__git_ps1)\$ '
   else
-    PS1='${debian_chroot:+($debian_chroot)}\[\033[01;92m\]\u@\h\[\033[00m\]:\[\033[01;96m\]\w\[\033[00m\]\$ '
+    PS1='${debian_chroot:+($debian_chroot)}\[\033[38;5;83m\]\u@\h\[\033[00m\]:\[\033[38;5;81m\]\w\[\033[00m\]\$ '
   fi
 else
   if type __git_ps1 >/dev/null 2>&1; then
@@ -91,10 +91,9 @@ if [ -x /usr/bin/dircolors ]; then
     eval "$(dircolors -b ~/.dircolors)"
   else
     eval "$(dircolors -b)"
-    # Use an explicit high-contrast palette for dark terminals. GNU dircolors
-    # normally renders directories in dark blue and backup files (*~) in dark
-    # gray, both of which are difficult to read on a navy/black background.
-    LS_COLORS="${LS_COLORS:+${LS_COLORS}:}di=01;96:ln=01;96:ex=01;92:or=01;91:mi=01;91:*~=01;97"
+    # Use explicit xterm-256 colors with high contrast on dark terminals.
+    # 81 = saturated light cyan, 83 = saturated light green, 203 = light red, 255 = light gray.
+    LS_COLORS="${LS_COLORS:+${LS_COLORS}:}di=38;5;81:ln=38;5;81:ex=38;5;83:or=38;5;203:mi=38;5;203:*~=38;5;255"
     export LS_COLORS
   fi
   alias ls='ls --color=auto'
