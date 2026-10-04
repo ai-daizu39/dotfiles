@@ -63,9 +63,9 @@ fi
 
 if [ "${color_prompt:-}" = yes ]; then
   if type __git_ps1 >/dev/null 2>&1; then
-    PS1='${debian_chroot:+($debian_chroot)}\[\033[01;32m\]\u@\h\[\033[00m\]:\[\033[01;36m\]\w\[\033[00m\]$(__git_ps1)\$ '
+    PS1='${debian_chroot:+($debian_chroot)}\[\033[01;92m\]\u@\h\[\033[00m\]:\[\033[01;96m\]\w\[\033[00m\]$(__git_ps1)\$ '
   else
-    PS1='${debian_chroot:+($debian_chroot)}\[\033[01;32m\]\u@\h\[\033[00m\]:\[\033[01;36m\]\w\[\033[00m\]\$ '
+    PS1='${debian_chroot:+($debian_chroot)}\[\033[01;92m\]\u@\h\[\033[00m\]:\[\033[01;96m\]\w\[\033[00m\]\$ '
   fi
 else
   if type __git_ps1 >/dev/null 2>&1; then
@@ -91,9 +91,10 @@ if [ -x /usr/bin/dircolors ]; then
     eval "$(dircolors -b ~/.dircolors)"
   else
     eval "$(dircolors -b)"
-    # The default directory blue (01;34) is hard to read on dark terminals.
-    # Use bright cyan for directories while keeping the rest of dircolors intact.
-    LS_COLORS="${LS_COLORS:+${LS_COLORS}:}di=01;36"
+    # Use an explicit high-contrast palette for dark terminals. GNU dircolors
+    # normally renders directories in dark blue and backup files (*~) in dark
+    # gray, both of which are difficult to read on a navy/black background.
+    LS_COLORS="${LS_COLORS:+${LS_COLORS}:}di=01;96:ln=01;96:ex=01;92:or=01;91:mi=01;91:*~=01;97"
     export LS_COLORS
   fi
   alias ls='ls --color=auto'
