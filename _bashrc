@@ -91,6 +91,10 @@ if [ -x /usr/bin/dircolors ]; then
     eval "$(dircolors -b ~/.dircolors)"
   else
     eval "$(dircolors -b)"
+    # The default directory blue (01;34) is hard to read on dark terminals.
+    # Use bright cyan for directories while keeping the rest of dircolors intact.
+    LS_COLORS="${LS_COLORS:+${LS_COLORS}:}di=01;36"
+    export LS_COLORS
   fi
   alias ls='ls --color=auto'
   #alias dir='dir --color=auto'
