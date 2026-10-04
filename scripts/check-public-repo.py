@@ -83,13 +83,28 @@ def changed_paths(commit: str) -> list[str]:
 def decoded_added_content(raw: bytes) -> list[str]:
     """Return useful text interpretations of one added diff record."""
     values = [raw.decode("utf-8", errors="replace")]
-    if b"\0" in raw:
-        # Git classifies UTF-16 and similar NUL-containing config files as
-        # binary. With --text the raw bytes remain available; try both UTF-16
-        # byte orders so credential-like text is not silently skipped.
+    if b"\0" not in raw:
+        return values
+
+    # Git's forced-text patch format still uses a single LF byte as the record
+    # separator. For UTF-16LE that can leave the second newline byte at the
+    # start of the following record; for UTF-16BE it can leave the first byte
+    # at the end of the current record. Try both byte alignments so secrets on
+    # later UTF-16 lines are not skipped.
+    candidates: list[bytes] = []
+    for start in (0, 1):
+        for trim_end in (0, 1):
+            end = len(raw) - trim_end
+            if start >= end:
+                continue
+            candidate = raw[start:end]
+            if len(candidate) % 2 == 0 and candidate not in candidates:
+                candidates.append(candidate)
+
+    for candidate in candidates:
         for encoding in ("utf-16", "utf-16-le", "utf-16-be"):
             try:
-                value = raw.decode(encoding)
+                value = candidate.decode(encoding)
             except (UnicodeDecodeError, UnicodeError):
                 continue
             if value not in values:
@@ -176,7 +191,6 @@ def main() -> int:
     parser.add_argument("--local-sha")
     parser.add_argument("--remote-sha", default=ZERO_SHA)
     parser.add_argument("--remote-name")
-    parser.add_argument("--current-ref", action="append", default=[])
     args = parser.parse_args()
     head = args.head or args.local_sha
     base = args.base if args.head else args.remote_sha
